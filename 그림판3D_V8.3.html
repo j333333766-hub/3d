@@ -1,0 +1,4831 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>그림판 3D V8.3 — 3D 모델 색칠</title>
+<meta name="description" content="초보자도 쉬운 3D 모델 색칠 웹앱. 내장 샘플, 브러시·채우기·이미지 스티커, 실행 취소, 자동 저장, GLB·USDZ(AR)·PNG 저장 지원." />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>" />
+<style>
+  :root {
+    --bg: #eef1f6;
+    --panel: #ffffff;
+    --panel-border: #e2e7f0;
+    --accent: #4c6ef5;
+    --accent-hover: #4263eb;
+    --accent-pressed: #3b5bdb;
+    --accent-soft: #edf2ff;
+    --accent-soft-border: #bac8ff;
+    --text: #24292f;
+    --text-dim: #7c8592;
+    --danger: #e03131;
+    --danger-soft: #fff0f0;
+    --success: #2f9e44;
+    --hover: #f3f5f9;
+    --radius: 14px;
+    --radius-sm: 9px;
+    --shadow: 0 1px 2px rgba(25,35,55,0.06), 0 4px 14px rgba(25,35,55,0.07);
+    --shadow-pop: 0 10px 34px rgba(25,35,55,0.22);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
+    font-size: 14px;
+    overflow: hidden;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #app {
+    display: grid;
+    grid-template-rows: 58px 1fr;
+    grid-template-columns: 92px 1fr 304px;
+    grid-template-areas:
+      "topbar topbar topbar"
+      "rail center right";
+    width: 100vw;
+    height: 100vh;
+  }
+
+  /* ---------- 상단 바 ---------- */
+  #topbar {
+    grid-area: topbar;
+    background: var(--panel);
+    border-bottom: 1px solid var(--panel-border);
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 8px;
+    z-index: 40;
+  }
+  .app-title {
+    font-weight: 700;
+    font-size: 17px;
+    margin: 0 10px 0 4px;
+    white-space: nowrap;
+  }
+  .app-title .ver { font-size: 11px; font-weight: 600; color: var(--text-dim); vertical-align: 2px; }
+  #topbar .spacer { flex: 1; }
+  #topbar .credit { font-size: 12px; color: var(--text-dim); margin-right: 8px; white-space: nowrap; }
+  .tb-sep { width: 1px; height: 26px; background: var(--panel-border); margin: 0 2px; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: #fff;
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    min-height: 42px;
+    padding: 0 14px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    transition: background 0.12s, border-color 0.12s, transform 0.05s;
+  }
+  .btn:hover:not(:disabled) { background: var(--hover); border-color: #c9d2e0; }
+  .btn:active:not(:disabled) { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+  .btn.primary:active:not(:disabled) { background: var(--accent-pressed); }
+  .btn.danger { color: var(--danger); }
+  .btn.danger:hover:not(:disabled) { background: var(--danger-soft); border-color: #ffc9c9; }
+  .btn.icon-btn { min-width: 42px; padding: 0; font-size: 17px; }
+  .btn .bi { font-size: 16px; }
+  .btn .caret { font-size: 10px; margin-left: -2px; opacity: 0.8; }
+  .btn.big { min-height: 48px; font-size: 15px; width: 100%; }
+
+  /* ---------- 저장 메뉴 ---------- */
+  .save-wrap { position: relative; }
+  .menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-pop);
+    padding: 6px;
+    min-width: 270px;
+    z-index: 80;
+  }
+  .menu[hidden] { display: none; }
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    background: none;
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+    color: var(--text);
+  }
+  .menu-item:hover:not(:disabled) { background: var(--accent-soft); }
+  .menu-item:disabled { opacity: 0.4; cursor: not-allowed; }
+  .menu-item .mi { font-size: 22px; }
+  .menu-item b { display: block; font-size: 14px; }
+  .menu-item span { display: block; font-size: 12px; color: var(--text-dim); margin-top: 1px; }
+
+  /* ---------- 좌측 도구 레일 ---------- */
+  #rail {
+    grid-area: rail;
+    background: var(--panel);
+    border-right: 1px solid var(--panel-border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    padding: 12px 0;
+    overflow-y: auto;
+    z-index: 30;
+  }
+  .tool-btn {
+    width: 74px;
+    min-height: 66px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    background: none;
+    border: 1.5px solid transparent;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-family: inherit;
+    color: var(--text);
+    transition: background 0.12s, border-color 0.12s;
+    flex-shrink: 0;
+  }
+  .tool-btn .ti { font-size: 25px; line-height: 1; }
+  .tool-btn .tl { font-size: 12px; font-weight: 600; }
+  .tool-btn:hover { background: var(--hover); }
+  .tool-btn.active {
+    background: var(--accent-soft);
+    border-color: var(--accent-soft-border);
+    color: var(--accent-pressed);
+  }
+  .rail-gap { height: 6px; border-top: 1px solid var(--panel-border); width: 56px; margin: 4px 0; flex-shrink: 0; }
+
+  /* ---------- 중앙 뷰포트 ---------- */
+  #center {
+    grid-area: center;
+    position: relative;
+    background: #2b2b2b;
+    overflow: hidden;
+  }
+  #viewport { width: 100%; height: 100%; display: block; touch-action: none; }
+  #viewport-overlay {
+    position: absolute;
+    top: 12px; left: 12px;
+    color: #fff;
+    font-size: 12.5px;
+    background: rgba(20,24,32,0.55);
+    padding: 7px 12px;
+    border-radius: 999px;
+    pointer-events: none;
+    max-width: calc(100% - 24px);
+    line-height: 1.5;
+    backdrop-filter: blur(3px);
+  }
+  #viewport-hint {
+    position: absolute;
+    bottom: 12px; left: 50%;
+    transform: translateX(-50%);
+    color: #e6e8ec;
+    font-size: 12px;
+    background: rgba(20,24,32,0.55);
+    padding: 7px 14px;
+    border-radius: 999px;
+    pointer-events: none;
+    max-width: calc(100% - 24px);
+    text-align: center;
+    backdrop-filter: blur(3px);
+  }
+  .canvas-fabs {
+    position: absolute;
+    right: 12px; bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 5;
+  }
+  .fab {
+    width: 46px; height: 46px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255,255,255,0.92);
+    box-shadow: var(--shadow);
+    font-size: 19px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .fab:hover { background: #fff; }
+  .fab:active { transform: scale(0.94); }
+  #drop-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(76,110,245,0.18);
+    border: 3px dashed var(--accent);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 20px;
+    font-weight: 700;
+    pointer-events: none;
+    z-index: 30;
+  }
+  #drop-overlay.active { display: flex; }
+  #toast {
+    position: absolute;
+    top: 14px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(20,24,32,0.82);
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 999px;
+    font-size: 13.5px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+    z-index: 50;
+    max-width: calc(100% - 28px);
+    text-align: center;
+  }
+  #toast.show { opacity: 1; }
+
+  /* ---------- 시작 화면 ---------- */
+  #start-screen {
+    position: absolute;
+    inset: 0;
+    z-index: 15;
+    background: linear-gradient(160deg, #f7f9fd 0%, #eef1f9 55%, #e7ecf7 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow-y: auto;
+    padding: 18px;
+  }
+  #start-screen[hidden] { display: none; }
+  .start-card { width: min(760px, 100%); margin: auto; text-align: center; }
+  .start-logo { font-size: 54px; line-height: 1; }
+  .start-card h1 { margin: 8px 0 4px; font-size: 30px; letter-spacing: -0.5px; }
+  .start-card .start-sub-title { margin: 0 0 22px; color: var(--text-dim); font-size: 15px; }
+  .start-close {
+    position: absolute;
+    top: 14px; right: 14px;
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    border: 1px solid var(--panel-border);
+    background: #fff;
+    font-size: 17px;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+    z-index: 2;
+  }
+  .start-resume[hidden] { display: none; }
+  .start-resume {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #fff8e6;
+    border: 1px solid #ffe3a3;
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    margin-bottom: 14px;
+    font-size: 13.5px;
+    text-align: left;
+  }
+  .start-resume .btn { margin-left: auto; flex-shrink: 0; min-height: 38px; }
+  .start-open {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    padding: 18px;
+    font-size: 18px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+    transition: background 0.12s, transform 0.06s;
+  }
+  .start-open:hover { background: var(--accent-hover); }
+  .start-open:active { transform: scale(0.99); }
+  .start-open span { font-size: 12.5px; font-weight: 500; opacity: 0.85; }
+  .start-sub {
+    margin: 22px 0 10px;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--text-dim);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .start-sub::before, .start-sub::after { content: ""; flex: 1; height: 1px; background: #d9dfeb; }
+  .sample-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+  }
+  .sample-btn {
+    background: #fff;
+    border: 1.5px solid var(--panel-border);
+    border-radius: var(--radius);
+    padding: 14px 4px 11px;
+    cursor: pointer;
+    font-family: inherit;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    box-shadow: var(--shadow);
+    transition: transform 0.08s, border-color 0.12s;
+  }
+  .sample-btn:hover { transform: translateY(-2px); border-color: var(--accent-soft-border); }
+  .sample-btn:active { transform: scale(0.96); }
+  .sample-btn .se { font-size: 34px; line-height: 1; }
+  .sample-btn .sl { font-size: 13px; font-weight: 700; }
+  .start-foot { margin-top: 22px; font-size: 12px; color: var(--text-dim); }
+
+  /* ---------- 우측 패널 ---------- */
+  #right {
+    grid-area: right;
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+    padding: 10px;
+    z-index: 30;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 13px 14px;
+    flex-shrink: 0;
+  }
+  .card h3 {
+    margin: 0 0 10px 0;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  #panel-close { display: none; }
+
+  .row { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+  .row:last-child { margin-bottom: 0; }
+  .row label { min-width: 34px; color: var(--text-dim); font-size: 13px; flex-shrink: 0; }
+  .row input[type="text"], .row select {
+    flex: 1; min-width: 0; padding: 8px 10px;
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 13px;
+    background: #fff;
+    color: var(--text);
+  }
+  .slider-val { min-width: 40px; text-align: right; font-size: 12.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+  /* 슬라이더 */
+  input[type="range"] { flex: 1; min-width: 0; appearance: none; -webkit-appearance: none; height: 28px; background: none; cursor: pointer; }
+  input[type="range"]::-webkit-slider-runnable-track { height: 7px; border-radius: 4px; background: #dde3ee; }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--accent); border: 3px solid #fff;
+    box-shadow: 0 1px 4px rgba(25,35,55,0.3);
+    margin-top: -7.5px;
+  }
+  input[type="range"]::-moz-range-track { height: 7px; border-radius: 4px; background: #dde3ee; }
+  input[type="range"]::-moz-range-thumb {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--accent); border: 3px solid #fff;
+    box-shadow: 0 1px 4px rgba(25,35,55,0.3);
+  }
+
+  /* 현재 색 */
+  .cur-color-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  input[type="color"] {
+    width: 52px; height: 44px;
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-sm);
+    cursor: pointer; padding: 3px; background: #fff;
+    flex-shrink: 0;
+  }
+  #color-hex { flex: 1; min-width: 0; padding: 10px; border: 1px solid var(--panel-border); border-radius: var(--radius-sm); font-family: inherit; font-size: 14px; }
+
+  .swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+  .swatch {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 8px;
+    border: 1px solid rgba(0,0,0,0.13);
+    cursor: pointer;
+    transition: transform 0.08s;
+  }
+  .swatch:hover { transform: scale(1.12); }
+  .swatch:active { transform: scale(0.95); }
+  .mini-label { font-size: 11.5px; color: var(--text-dim); margin: 10px 0 6px; }
+
+  /* 세그먼트 버튼 */
+  .seg { display: flex; gap: 5px; background: #eef1f7; border-radius: var(--radius-sm); padding: 4px; margin-bottom: 11px; }
+  .seg-btn {
+    flex: 1;
+    min-height: 38px;
+    border: none;
+    background: none;
+    border-radius: 7px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dim);
+    padding: 0 4px;
+    white-space: nowrap;
+  }
+  .seg-btn.active { background: #fff; color: var(--accent-pressed); box-shadow: 0 1px 4px rgba(25,35,55,0.14); }
+
+  /* 스위치 */
+  .switch-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 7px 0; cursor: pointer; font-size: 13.5px;
+  }
+  .switch { position: relative; display: inline-block; width: 44px; height: 25px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch i {
+    position: absolute; inset: 0;
+    background: #ccd3e0; border-radius: 999px;
+    transition: background 0.15s;
+  }
+  .switch i::before {
+    content: ""; position: absolute;
+    width: 19px; height: 19px; border-radius: 50%;
+    background: #fff; top: 3px; left: 3px;
+    transition: transform 0.15s;
+    box-shadow: 0 1px 3px rgba(25,35,55,0.3);
+  }
+  .switch input:checked + i { background: var(--accent); }
+  .switch input:checked + i::before { transform: translateX(19px); }
+
+  .panel-tip {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.65;
+    background: #f6f8fc;
+    border-radius: var(--radius-sm);
+    padding: 9px 11px;
+    margin-top: 10px;
+  }
+  .panel-tip, #viewport-hint, .gstep span, .menu-item span, .start-resume, #confirm-text { word-break: keep-all; }
+  .tool-panel { display: none; }
+  .tool-panel.active { display: block; }
+  .btn-row { display: flex; gap: 6px; }
+  .btn-row .btn { flex: 1; padding: 0 4px; font-size: 13px; }
+
+  /* 자세히(고급) */
+  details.card summary {
+    cursor: pointer;
+    font-size: 13.5px;
+    font-weight: 700;
+    list-style: none;
+    display: flex; align-items: center; gap: 6px;
+  }
+  details.card summary::-webkit-details-marker { display: none; }
+  details.card summary::after { content: "▾"; margin-left: auto; color: var(--text-dim); transition: transform 0.15s; }
+  details.card[open] summary::after { transform: rotate(180deg); }
+  .adv-sec { margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--panel-border); }
+  .adv-sec h4 { margin: 0 0 8px; font-size: 12.5px; color: var(--text-dim); font-weight: 700; }
+  .info-table { font-size: 12.5px; line-height: 1.8; }
+  .info-table .label { color: var(--text-dim); display: inline-block; min-width: 62px; }
+  .info-table .value { font-weight: 600; word-break: break-all; }
+
+  .mesh-list {
+    max-height: 170px;
+    overflow-y: auto;
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-sm);
+    background: #fafbfd;
+  }
+  .mesh-item {
+    padding: 8px 10px;
+    font-size: 13px;
+    cursor: pointer;
+    border-bottom: 1px solid #eef1f6;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mesh-item:last-child { border-bottom: none; }
+  .mesh-item:hover { background: var(--hover); }
+  .mesh-item.selected { background: var(--accent-soft); color: var(--accent-pressed); font-weight: 700; }
+  .mesh-item .dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid #98a2b3; flex-shrink: 0; }
+  .mesh-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  input[type="file"] { display: none; }
+
+  /* ---------- 이미지 스티커 ---------- */
+  #sticker-lib {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 5px;
+    margin-bottom: 10px;
+  }
+  .emoji-btn {
+    aspect-ratio: 1;
+    font-size: 23px;
+    line-height: 1;
+    background: #fff;
+    border: 1px solid var(--panel-border);
+    border-radius: 9px;
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.08s, border-color 0.12s;
+  }
+  .emoji-btn:hover { transform: scale(1.12); border-color: var(--accent-soft-border); }
+  .emoji-btn:active { transform: scale(0.94); }
+  #decal-thumb-wrap {
+    position: relative;
+    width: 100%;
+    height: 78px;
+    border: 1.5px dashed #c9d2e0;
+    border-radius: var(--radius-sm);
+    background: repeating-conic-gradient(#f0f2f6 0% 25%, #ffffff 0% 50%) 50% / 14px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  #decal-thumb { max-width: 100%; max-height: 100%; display: none; }
+  #decal-thumb-wrap.has-image #decal-thumb { display: block; }
+  #decal-thumb-wrap.has-image #decal-thumb-empty { display: none; }
+  #decal-thumb-empty {
+    font-size: 11.5px;
+    color: var(--text-dim);
+    background: rgba(255,255,255,0.9);
+    padding: 3px 10px;
+    border-radius: 999px;
+  }
+
+  /* ---------- 모달 ---------- */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    background: rgba(18,24,36,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .modal-backdrop[hidden] { display: none; }
+  .modal {
+    background: var(--panel);
+    border-radius: 18px;
+    box-shadow: var(--shadow-pop);
+    padding: 24px;
+    width: min(600px, 100%);
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+  }
+  .modal.small { width: min(400px, 100%); }
+  .modal h2 { margin: 0 0 16px; font-size: 20px; text-align: center; }
+  .modal-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+  .modal-btns .btn { min-width: 96px; }
+  #confirm-text { font-size: 14.5px; line-height: 1.7; white-space: pre-line; }
+  .guide-steps { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .gstep {
+    display: flex; align-items: center; gap: 12px;
+    background: #f6f8fc;
+    border-radius: var(--radius);
+    padding: 13px 14px;
+  }
+  .gstep .ge { font-size: 30px; line-height: 1; }
+  .gstep b { display: block; font-size: 14px; margin-bottom: 2px; }
+  .gstep span { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; }
+  .guide-keys { margin-top: 14px; font-size: 13px; }
+  .guide-keys summary { cursor: pointer; color: var(--text-dim); font-weight: 600; padding: 4px 0; }
+  .guide-keys .keys-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 3px 18px;
+    margin-top: 8px; line-height: 1.9; font-size: 12.5px; color: var(--text);
+  }
+  .guide-keys .keys-grid b { color: var(--text-dim); font-weight: 600; margin-right: 6px; }
+  #guide-close { margin-top: 18px; }
+
+  /* ---------- 처리 중/부팅 오류 ---------- */
+  #busy-overlay {
+    position: absolute; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    background: rgba(15,20,30,0.4);
+    z-index: 60;
+  }
+  #busy-overlay.show { display: flex; }
+  .busy-box {
+    background: rgba(28,32,42,0.94);
+    color: #fff;
+    padding: 18px 26px;
+    border-radius: 14px;
+    display: flex; align-items: center; gap: 13px;
+    font-size: 14px;
+    box-shadow: var(--shadow-pop);
+  }
+  .spinner {
+    width: 23px; height: 23px;
+    border: 3px solid rgba(255,255,255,0.25);
+    border-top-color: #74a4ff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #boot-error {
+    display: none;
+    position: absolute; inset: 0;
+    z-index: 100;
+    background: rgba(20,20,25,0.95);
+    color: #fff;
+    align-items: center; justify-content: center;
+    text-align: center;
+    padding: 20px;
+  }
+
+  /* ---------- 모바일 패널 토글 ---------- */
+  #btn-panel {
+    display: none;
+    position: fixed;
+    right: 14px;
+    bottom: 96px;
+    width: 58px; height: 58px;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-size: 25px;
+    box-shadow: var(--shadow-pop);
+    cursor: pointer;
+    z-index: 45;
+  }
+
+  /* ---------- 키보드 접근성 ---------- */
+  .btn:focus-visible, .tool-btn:focus-visible, .seg-btn:focus-visible, .swatch:focus-visible,
+  .sample-btn:focus-visible, .menu-item:focus-visible, .start-open:focus-visible {
+    outline: 2.5px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  /* ---------- 반응형 ---------- */
+  @media (max-width: 1200px) {
+    #app { grid-template-columns: 84px 1fr 280px; }
+    #topbar .credit { display: none; }
+  }
+  @media (max-width: 940px) {
+    #app {
+      grid-template-rows: 54px 1fr 78px;
+      grid-template-columns: 1fr;
+      grid-template-areas:
+        "topbar"
+        "center"
+        "rail";
+    }
+    .app-title { font-size: 15px; margin-right: 4px; }
+    .app-title .ver { display: none; }
+    .btn .bl { display: none; }
+    .btn { padding: 0 12px; }
+    .btn.primary .bl { display: inline; }
+    #rail {
+      flex-direction: row;
+      justify-content: space-evenly;
+      border-right: none;
+      border-top: 1px solid var(--panel-border);
+      padding: 5px 6px;
+      gap: 4px;
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+    .tool-btn { width: 62px; min-height: 62px; }
+    .tool-btn .ti { font-size: 22px; }
+    .tool-btn .tl { font-size: 11px; }
+    .rail-gap { display: none; }
+    #right {
+      position: fixed;
+      top: 54px; right: 0; bottom: 78px;
+      width: min(320px, 88vw);
+      background: var(--bg);
+      box-shadow: var(--shadow-pop);
+      transform: translateX(105%);
+      transition: transform 0.22s ease;
+      z-index: 44;
+    }
+    #right.open { transform: translateX(0); }
+    #btn-panel { display: block; }
+    #panel-close {
+      display: flex;
+      align-self: flex-end;
+      margin: 2px 2px -4px;
+      width: 40px; height: 40px;
+      align-items: center; justify-content: center;
+      border-radius: 50%;
+      border: none; background: none;
+      font-size: 17px; cursor: pointer; color: var(--text-dim);
+    }
+    .sample-grid { grid-template-columns: repeat(3, 1fr); }
+    .guide-steps { grid-template-columns: 1fr; }
+    .canvas-fabs { bottom: 12px; }
+    #viewport-hint { bottom: 12px; max-width: calc(100% - 130px); left: 12px; transform: none; }
+  }
+
+  /* ---------- 스크롤바 ---------- */
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #c6cdda; border-radius: 5px; }
+  ::-webkit-scrollbar-thumb:hover { background: #aab3c5; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- 상단 바 -->
+  <div id="topbar">
+    <div class="app-title">🎨 그림판 3D <span class="ver">V8.3</span></div>
+    <button class="btn" id="btn-open" title="모델 열기 (Ctrl+O)"><span class="bi">📁</span><span class="bl">열기</span></button>
+    <div class="tb-sep"></div>
+    <button class="btn icon-btn" id="btn-undo" disabled title="실행 취소 (Ctrl+Z)">↶</button>
+    <button class="btn icon-btn" id="btn-redo" disabled title="다시 실행 (Ctrl+Y)">↷</button>
+    <button class="btn danger" id="btn-reset" disabled title="색칠을 모두 지우고 처음 상태로"><span class="bi">🔄</span><span class="bl">처음부터</span></button>
+    <div class="spacer"></div>
+    <div class="credit">만든이: 인천 구월중학교 조창현</div>
+    <div class="save-wrap">
+      <button class="btn primary" id="btn-save" disabled><span class="bi">💾</span><span class="bl">저장</span><span class="caret">▾</span></button>
+      <div id="save-menu" class="menu" hidden>
+        <button class="menu-item" id="btn-export" disabled>
+          <span class="mi">🧊</span>
+          <span><b>작품 파일 (GLB)</b><span>다시 열어 이어서 색칠할 수 있어요</span></span>
+        </button>
+        <button class="menu-item" id="btn-usdz" disabled>
+          <span class="mi">📱</span>
+          <span><b>AR 파일 (USDZ)</b><span>아이폰·아이패드에서 실물처럼 보여요</span></span>
+        </button>
+        <button class="menu-item" id="btn-shot" disabled>
+          <span class="mi">📷</span>
+          <span><b>사진 (PNG)</b><span>지금 보이는 화면을 이미지로</span></span>
+        </button>
+      </div>
+    </div>
+    <button class="btn icon-btn" id="btn-help" title="도움말">❓</button>
+    <input type="file" id="file-input" accept=".glb,.gltf,.stl" />
+    <input type="file" id="decal-file-input" accept="image/*" />
+  </div>
+
+  <!-- 좌측 도구 레일 -->
+  <div id="rail">
+    <button class="tool-btn active" data-tool="view" title="모델 돌려보기·부품 선택 (1)">
+      <span class="ti">👀</span><span class="tl">보기</span>
+    </button>
+    <div class="rail-gap"></div>
+    <button class="tool-btn" data-tool="brush" title="드래그해서 색칠 (2)">
+      <span class="ti">🖌️</span><span class="tl">붓</span>
+    </button>
+    <button class="tool-btn" data-tool="fill" title="클릭 한 번으로 넓게 칠하기 (3)">
+      <span class="ti">🪣</span><span class="tl">채우기</span>
+    </button>
+    <button class="tool-btn" data-tool="sticker" title="사진·그림을 모델에 새기기 (4)">
+      <span class="ti">🖼️</span><span class="tl">스티커</span>
+    </button>
+    <button class="tool-btn" data-tool="eraser" title="원래 색으로 되돌리기 (5)">
+      <span class="ti">🧽</span><span class="tl">지우개</span>
+    </button>
+    <button class="tool-btn" data-tool="picker" title="모델에서 색 가져오기 (6)">
+      <span class="ti">💧</span><span class="tl">스포이드</span>
+    </button>
+  </div>
+
+  <!-- 중앙 뷰포트 -->
+  <div id="center">
+    <canvas id="viewport"></canvas>
+    <div id="viewport-overlay">
+      <span id="overlay-mode">도구: 보기</span><span id="overlay-model"></span>
+    </div>
+    <div id="viewport-hint">
+      드래그: 돌리기 · 휠/두 손가락: 확대 · 우클릭 드래그: 이동
+    </div>
+    <div class="canvas-fabs">
+      <button class="fab" id="btn-reframe" title="모델이 화면에 꽉 차게">🎯</button>
+    </div>
+
+    <!-- 시작 화면 -->
+    <div id="start-screen">
+      <button id="start-close" class="start-close" hidden title="닫기">✕</button>
+      <div class="start-card">
+        <div class="start-logo">🎨</div>
+        <h1>그림판 3D</h1>
+        <p class="start-sub-title">3D 모델을 열고 · 물감처럼 칠하고 · 저장해요</p>
+        <div class="start-resume" id="start-resume" hidden></div>
+        <button class="start-open" id="start-open">
+          📁 내 파일 열기
+          <span>GLB · STL 파일 (화면에 끌어다 놓아도 돼요)</span>
+        </button>
+        <div class="start-sub">샘플로 바로 시작</div>
+        <div class="sample-grid" id="sample-grid"></div>
+        <div class="start-foot">만든이 · 인천 구월중학교 조창현</div>
+      </div>
+    </div>
+
+    <div id="drop-overlay">여기에 GLB 또는 STL 파일을 놓으세요</div>
+    <div id="busy-overlay">
+      <div class="busy-box"><div class="spinner"></div><div id="busy-text">처리 중…</div></div>
+    </div>
+    <div id="boot-error">
+      <div>
+        <div style="font-size:18px; font-weight:600; margin-bottom:8px;">앱을 시작하지 못했습니다</div>
+        <div style="font-size:13px; color:#ccc; line-height:1.7;">
+          3D 라이브러리(three.js)를 인터넷에서 불러오지 못했습니다.<br>
+          네트워크 연결을 확인한 뒤 새로고침(F5) 해 주세요.
+        </div>
+        <button class="btn primary" style="margin-top:14px;" onclick="location.reload()">새로고침</button>
+      </div>
+    </div>
+    <div id="toast"></div>
+  </div>
+
+  <!-- 우측 패널 -->
+  <div id="right">
+    <button id="panel-close" title="패널 닫기">✕</button>
+
+    <div class="card" id="card-color">
+      <h3>🎨 색 고르기</h3>
+      <div class="cur-color-row">
+        <input type="color" id="color-picker" value="#ff6b6b" title="원하는 색을 직접 고르기">
+        <input type="text" id="color-hex" value="#ff6b6b" maxlength="7">
+      </div>
+      <div class="swatches" id="swatches"></div>
+      <div class="mini-label">최근 쓴 색</div>
+      <div class="swatches" id="recent-swatches"></div>
+    </div>
+
+    <div class="card" id="card-tool">
+      <h3 id="tool-panel-title">👀 보기</h3>
+
+      <!-- 보기 -->
+      <div class="tool-panel active" id="opt-view">
+        <div class="btn-row" style="margin-bottom:8px;">
+          <button class="btn" id="btn-view-front" title="정면에서 보기">정면</button>
+          <button class="btn" id="btn-view-side" title="옆에서 보기">옆면</button>
+          <button class="btn" id="btn-view-top" title="위에서 보기">윗면</button>
+        </div>
+        <label class="switch-row"><span>빙글빙글 자동 회전</span>
+          <span class="switch"><input type="checkbox" id="chk-autorotate"><i></i></span>
+        </label>
+        <label class="switch-row"><span>바닥 격자 보이기</span>
+          <span class="switch"><input type="checkbox" id="chk-grid" checked><i></i></span>
+        </label>
+        <label class="switch-row"><span>방향 축 보이기</span>
+          <span class="switch"><input type="checkbox" id="chk-axis" checked><i></i></span>
+        </label>
+        <div class="row" style="margin-top:6px;">
+          <label>배경</label>
+          <select id="bg-select">
+            <option value="#2b2b2b" selected>다크</option>
+            <option value="#6b6b6b">그레이</option>
+            <option value="#e8e8e8">라이트</option>
+            <option value="#1a2a3f">네이비</option>
+          </select>
+        </div>
+        <div class="panel-tip">모델을 클릭하면 부품이 선택돼요. 아래 ‘자세히’에서 부품 목록을 볼 수 있어요.</div>
+      </div>
+
+      <!-- 붓 -->
+      <div class="tool-panel" id="opt-brush">
+        <div class="seg" id="brush-kind">
+          <button class="seg-btn brush-btn active" data-brush="marker">마커</button>
+          <button class="seg-btn brush-btn" data-brush="soft">에어</button>
+          <button class="seg-btn brush-btn" data-brush="spray">스프레이</button>
+        </div>
+        <div id="brush-common">
+          <div class="row">
+            <label>크기</label>
+            <input type="range" id="brush-size" min="1" max="15" step="0.5" value="3">
+            <span class="slider-val" id="brush-size-val">3%</span>
+          </div>
+          <div class="row">
+            <label>진하기</label>
+            <input type="range" id="brush-strength" min="5" max="100" value="100">
+            <span class="slider-val" id="brush-strength-val">100%</span>
+          </div>
+        </div>
+        <label class="switch-row" title="모델 가운데를 기준으로 반대쪽에도 똑같이 칠해져요 (M)">
+          <span>양쪽 똑같이 칠하기</span>
+          <span class="switch"><input type="checkbox" id="chk-mirror"><i></i></span>
+        </label>
+        <div class="panel-tip" id="brush-tip">마커: 또렷하게 · 에어: 부드럽게 · 스프레이: 점점이</div>
+      </div>
+
+      <!-- 채우기 -->
+      <div class="tool-panel" id="opt-fill">
+        <div class="seg" id="fill-scope">
+          <button class="seg-btn active" data-scope="mesh">🧩 부품만</button>
+          <button class="seg-btn" data-scope="all">🌈 전체</button>
+        </div>
+        <div class="panel-tip" id="fill-tip">모델에서 부품을 클릭하면 그 부품 전체가 지금 색으로 칠해져요.</div>
+      </div>
+
+      <!-- 스티커 -->
+      <div class="tool-panel" id="opt-sticker">
+        <div class="mini-label" style="margin-top:0;">기본 스티커</div>
+        <div id="sticker-lib"></div>
+        <div class="mini-label">내 이미지 가져오기</div>
+        <div class="btn-row" style="margin-bottom:8px;">
+          <button class="btn" id="btn-decal-paste">📋 붙여넣기</button>
+          <button class="btn" id="btn-decal-file">📁 파일</button>
+        </div>
+        <div id="decal-thumb-wrap">
+          <img id="decal-thumb" alt="" />
+          <span id="decal-thumb-empty">Ctrl+V로 이미지를 붙여넣으세요</span>
+        </div>
+        <div class="row">
+          <label>크기</label>
+          <input type="range" id="decal-size" min="4" max="80" value="25">
+          <span class="slider-val" id="decal-size-val">25%</span>
+        </div>
+        <div class="row">
+          <label>회전</label>
+          <input type="range" id="decal-rot" min="0" max="360" value="0">
+          <span class="slider-val" id="decal-rot-val">0°</span>
+        </div>
+        <div class="row">
+          <label>투명</label>
+          <input type="range" id="decal-opacity" min="10" max="100" value="100">
+          <span class="slider-val" id="decal-opacity-val">100%</span>
+        </div>
+        <label class="switch-row"><span>좌우 뒤집기</span>
+          <span class="switch"><input type="checkbox" id="decal-flip"><i></i></span>
+        </label>
+        <button class="btn primary big" id="btn-decal-apply" style="margin-top:6px;" disabled>✔ 모델에 새기기</button>
+        <button class="btn big" id="btn-decal-cancel" style="margin-top:6px;" disabled>스티커 취소</button>
+        <div class="panel-tip">스티커를 고르고 → 모델 위를 클릭·드래그로 위치 잡기 → ‘새기기’!</div>
+        <div class="mini-label">새긴 스티커: <span id="sticker-count">0</span>개</div>
+        <div class="btn-row">
+          <button class="btn" id="btn-sticker-undo-last" disabled>마지막 지우기</button>
+          <button class="btn danger" id="btn-sticker-clear" disabled>모두 지우기</button>
+        </div>
+      </div>
+
+      <!-- 지우개 -->
+      <div class="tool-panel" id="opt-eraser">
+        <div id="eraser-slot"></div>
+        <div class="panel-tip">문지르면 처음 색으로 돌아와요. 전부 지우려면 위의 🔄 ‘처음부터’를 누르세요.</div>
+      </div>
+
+      <!-- 스포이드 -->
+      <div class="tool-panel" id="opt-picker">
+        <div class="panel-tip">모델이나 <b>새긴 스티커</b>에서 마음에 드는 색을 클릭하면 내 색이 돼요.<br>붓 도구에서 <b>Alt+클릭</b>으로도 쓸 수 있어요.</div>
+      </div>
+    </div>
+
+    <!-- 자세히 (고급) -->
+    <details class="card" id="advanced">
+      <summary>⚙️ 자세히</summary>
+
+      <div class="adv-sec">
+        <h4>부품 목록</h4>
+        <div class="mesh-list" id="mesh-list">
+          <div style="padding:10px; color:var(--text-dim); font-size:12px; text-align:center;">
+            모델을 열면 부품이 보여요
+          </div>
+        </div>
+        <div class="info-table" id="selection-info" style="margin-top:8px;">
+          <div><span class="label">선택한 부품:</span> <span class="value" id="sel-name">—</span></div>
+          <div style="display:none;"><span class="label">타입:</span> <span class="value" id="sel-type">—</span></div>
+          <div><span class="label">점 개수:</span> <span class="value" id="sel-verts">—</span></div>
+          <div><span class="label">색:</span> <span class="value" id="sel-color">—</span></div>
+        </div>
+        <button class="btn big" id="btn-apply-color" style="margin-top:8px;" disabled>
+          선택한 부품을 지금 색으로
+        </button>
+      </div>
+
+      <div class="adv-sec">
+        <h4>자동 저장 (이어하기)</h4>
+        <div style="font-size:12.5px; color:var(--text-dim); line-height:1.6;" id="storage-info">
+          저장된 작업이 없습니다.
+        </div>
+        <button class="btn big" id="btn-restore" style="margin-top:8px;" disabled>
+          저장된 작업 불러오기
+        </button>
+        <button class="btn big danger" id="btn-clear-storage" style="margin-top:6px;">
+          자동 저장 기록 삭제
+        </button>
+      </div>
+
+      <div class="adv-sec">
+        <h4>기타</h4>
+        <button class="btn big" id="btn-download-html" title="이 프로그램 자체를 HTML 파일로 저장">
+          💾 프로그램 파일 받기
+        </button>
+      </div>
+    </details>
+  </div>
+</div>
+
+<!-- 모바일: 색·옵션 패널 열기 -->
+<button id="btn-panel" title="색·옵션 열기">🎨</button>
+
+<!-- 사용법 안내 모달 -->
+<div class="modal-backdrop" id="guide-modal" hidden>
+  <div class="modal">
+    <h2>🎨 이렇게 사용해요</h2>
+    <div class="guide-steps">
+      <div class="gstep"><div class="ge">🖌️</div><div><b>① 도구 고르기</b><span>왼쪽에서 붓·채우기·스티커·지우개를 골라요</span></div></div>
+      <div class="gstep"><div class="ge">🌈</div><div><b>② 색 고르기</b><span>오른쪽 팔레트에서 마음에 드는 색을 콕!</span></div></div>
+      <div class="gstep"><div class="ge">👆</div><div><b>③ 칠하기</b><span>모델 위에서 드래그! ‘보기’ 도구로 빙글 돌려요</span></div></div>
+      <div class="gstep"><div class="ge">💾</div><div><b>④ 저장하기</b><span>작품 파일(GLB) · AR(USDZ) · 사진(PNG)</span></div></div>
+    </div>
+    <details class="guide-keys">
+      <summary>화면 조작법 · 단축키 보기</summary>
+      <div class="keys-grid">
+        <div><b>보기 도구</b>드래그로 돌리기</div>
+        <div><b>확대/축소</b>휠 또는 두 손가락</div>
+        <div><b>화면 이동</b>우클릭 드래그</div>
+        <div><b>색칠(터치)</b>한 손가락 칠하기 · 두 손가락 화면</div>
+        <div><b>1~6</b>도구 바꾸기</div>
+        <div><b>[ , ]</b>붓 크기 줄이기/키우기</div>
+        <div><b>Ctrl+Z / Y</b>실행 취소 / 다시 실행</div>
+        <div><b>Ctrl+S</b>작품 저장 (GLB)</div>
+        <div><b>Alt+클릭</b>색 가져오기 (붓 도구)</div>
+        <div><b>M</b>양쪽 똑같이 칠하기</div>
+        <div><b>Ctrl+V</b>스티커 이미지 붙여넣기</div>
+        <div><b>Q / E · Enter</b>스티커 회전 · 새기기</div>
+      </div>
+    </details>
+    <button class="btn primary big" id="guide-close">알겠어요, 시작!</button>
+  </div>
+</div>
+
+<!-- 확인 모달 -->
+<div class="modal-backdrop" id="confirm-modal" hidden>
+  <div class="modal small">
+    <div id="confirm-text"></div>
+    <div class="modal-btns">
+      <button class="btn" id="confirm-cancel">취소</button>
+      <button class="btn primary" id="confirm-ok">확인</button>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js",
+    "three/examples/jsm/controls/OrbitControls.js": "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/controls/OrbitControls.js",
+    "three/examples/jsm/loaders/GLTFLoader.js": "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/GLTFLoader.js",
+    "three/examples/jsm/loaders/STLLoader.js": "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/STLLoader.js",
+    "three/examples/jsm/geometries/DecalGeometry.js": "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/geometries/DecalGeometry.js",
+    "three/examples/jsm/exporters/GLTFExporter.js": "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/exporters/GLTFExporter.js",
+    "three/examples/jsm/exporters/USDZExporter.js": "https://cdn.jsdelivr.net/npm/three@0.147.0/examples/jsm/exporters/USDZExporter.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
+import { DecalGeometry } from 'three/examples/jsm/geometries/DecalGeometry.js';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
+import { USDZExporter } from 'three/examples/jsm/exporters/USDZExporter.js';
+// 자동 저장 압축용 (V8.2: 정점이 3배로 늘어 압축 없이는 localStorage 한도 초과)
+import { zlibSync, unzlibSync } from 'https://cdn.jsdelivr.net/npm/three@0.147.0/examples/jsm/libs/fflate.module.js';
+
+// ====================== 전역 상태 ======================
+const state = {
+  scene: null,
+  camera: null,
+  renderer: null,
+  controls: null,
+  raycaster: new THREE.Raycaster(),
+  pointer: new THREE.Vector2(),
+
+  root: null,
+  editableMeshes: [],
+  selectedMesh: null,
+  selectedEmissiveBackup: null,
+
+  mode: 'view',               // view | paintBrush | paintMesh | paintAll | decal
+  currentColor: '#ff6b6b',
+
+  // 이미지 스티커(데칼)
+  decal: {
+    canvas: null,             // 정규화된 이미지 (최대 1024px)
+    pix: null,                // ImageData.data (RGBA)
+    pixW: 0, pixH: 0,
+    aspect: 1,                // width / height
+    group: null,              // 미리보기 (테두리 프레임 + 폴백 평면)
+    projGroup: null,          // 곡면 투영 미리보기 (DecalGeometry, 월드 좌표)
+    projMeshes: [],
+    decalMat: null,           // 공유 재질 (평면·투영 미리보기 공용)
+    planeMesh: null,
+    texture: null,
+    position: new THREE.Vector3(),
+    normal: new THREE.Vector3(0, 0, 1),
+    rotation: 0,              // deg (표면 법선 기준)
+    sizePct: 25,              // 모델 크기 대비 가로폭 %
+    opacity: 100,
+    flipX: false,
+    placed: false,            // 모델 위에 놓였는지
+    dragging: false,
+  },
+
+  brush: {
+    type: 'marker',           // marker | soft | spray | eraser
+    sizePct: 3,               // 모델 크기 대비 % (V8.3: 전체 범위 절반으로 축소)
+    strength: 100,            // 1~100
+  },
+  mirror: false,              // 좌우 대칭(X축) 색칠
+
+  // 스트로크 기반 히스토리 (색칠은 diff로 저장되어 메모리 부담이 적음)
+  undoStack: [],
+  redoStack: [],
+  MAX_HISTORY: 40,
+  currentStroke: null,
+
+  // 레이캐스트 대상 (세분화된 메시 대신 저해상도 프록시 사용)
+  raycastTargets: [],
+  triInfo: null,              // { before, after } 세분화 전/후 삼각형 수
+
+  painting: false,
+  lastPaint: null,            // { mesh, point }
+  brushCursor: null,
+  mirrorCursor: null,         // 대칭 모드 보조 커서
+  dirtyMeshes: new Set(),     // 부분 GPU 업로드 대기 목록
+
+  currentFileName: null,
+  currentFileHash: null,
+
+  grid: null,
+  axis: null,
+  originSnapshot: null,
+  modelMaxDim: 1,
+  needsRender: true,
+};
+
+// ====================== Three.js 초기화 ======================
+function initThree() {
+  const canvas = document.getElementById('viewport');
+  const center = document.getElementById('center');
+
+  state.scene = new THREE.Scene();
+  state.scene.background = new THREE.Color(0x2b2b2b);
+
+  state.camera = new THREE.PerspectiveCamera(
+    50, center.clientWidth / center.clientHeight, 0.01, 5000
+  );
+  state.camera.position.set(3, 2.5, 4);
+
+  state.renderer = new THREE.WebGLRenderer({
+    canvas, antialias: true, preserveDrawingBuffer: true,
+    powerPreference: 'high-performance',
+  });
+  state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  state.renderer.setSize(center.clientWidth, center.clientHeight, false);
+  state.renderer.outputEncoding = THREE.sRGBEncoding;
+
+  state.controls = new OrbitControls(state.camera, canvas);
+  state.controls.enableDamping = true;
+  state.controls.dampingFactor = 0.1;
+  state.controls.addEventListener('change', () => { state.needsRender = true; });
+
+  // 반구 조명: 위/아래 색을 달리해 입체감이 더 살아남
+  const ambient = new THREE.HemisphereLight(0xffffff, 0x8899aa, 0.55);
+  state.scene.add(ambient);
+
+  const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+  dir.position.set(5, 10, 7);
+  state.scene.add(dir);
+
+  const dir2 = new THREE.DirectionalLight(0xffffff, 0.3);
+  dir2.position.set(-5, -3, -5);
+  state.scene.add(dir2);
+
+  state.grid = new THREE.GridHelper(10, 20, 0x666666, 0x444444);
+  state.scene.add(state.grid);
+
+  state.axis = new THREE.AxesHelper(1);
+  state.scene.add(state.axis);
+
+  // 브러시 커서 (3D 원)
+  const circlePts = [];
+  for (let i = 0; i < 48; i++) {
+    const a = (i / 48) * Math.PI * 2;
+    circlePts.push(new THREE.Vector3(Math.cos(a), Math.sin(a), 0));
+  }
+  const ringGeo = new THREE.BufferGeometry().setFromPoints(circlePts);
+  const ringMat = new THREE.LineBasicMaterial({
+    color: 0x00e5ff, depthTest: false, transparent: true, opacity: 0.9,
+  });
+  state.brushCursor = new THREE.LineLoop(ringGeo, ringMat);
+  state.brushCursor.renderOrder = 999;
+  state.brushCursor.visible = false;
+  state.scene.add(state.brushCursor);
+
+  // 대칭 모드 보조 커서 (반대쪽 위치 표시)
+  state.mirrorCursor = new THREE.LineLoop(ringGeo.clone(), ringMat.clone());
+  state.mirrorCursor.material.opacity = 0.4;
+  state.mirrorCursor.renderOrder = 999;
+  state.mirrorCursor.visible = false;
+  state.scene.add(state.mirrorCursor);
+
+  // WebGL 컨텍스트 유실 대응 (그래픽 드라이버 재시작·리소스 부족 등)
+  canvas.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault();
+    showToast('그래픽 처리가 일시 중단되었습니다. 화면이 계속 멈춰 있으면 새로고침(F5) 하세요.', 6000);
+  });
+  canvas.addEventListener('webglcontextrestored', () => {
+    state.needsRender = true;
+    showToast('그래픽 처리가 복구되었습니다.');
+  });
+
+  window.addEventListener('resize', onResize);
+  onResize();
+  animate();
+}
+
+function onResize() {
+  const center = document.getElementById('center');
+  if (!center) return;
+  state.camera.aspect = center.clientWidth / center.clientHeight;
+  state.camera.updateProjectionMatrix();
+  state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  state.renderer.setSize(center.clientWidth, center.clientHeight, false);
+  state.needsRender = true;
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  const controlsChanged = state.controls.update();
+  flushDirtyColors();
+  if (state.needsRender || controlsChanged) {
+    state.renderer.render(state.scene, state.camera);
+    state.needsRender = false;
+  }
+}
+
+// ====================== 색상 버퍼 부분 업로드 ======================
+// 브러시는 국소 영역만 바꾸므로, 매번 전체 색상 버퍼(수 MB)를 GPU로 다시
+// 올리는 대신 변경된 정점 구간만 업로드한다. 프레임당 1회로 합쳐서 처리.
+function markColorsDirty(mesh, minI, maxI) {
+  const d = mesh.userData._dirtyRange;
+  if (!d) {
+    mesh.userData._dirtyRange = { min: minI, max: maxI };
+    state.dirtyMeshes.add(mesh);
+  } else {
+    if (minI < d.min) d.min = minI;
+    if (maxI > d.max) d.max = maxI;
+  }
+}
+
+function flushDirtyColors() {
+  if (state.dirtyMeshes.size === 0) return;
+  state.dirtyMeshes.forEach(mesh => {
+    const attr = mesh.geometry && mesh.geometry.attributes && mesh.geometry.attributes.color;
+    const d = mesh.userData._dirtyRange;
+    mesh.userData._dirtyRange = null;
+    if (!attr || !d) return;
+    if (!attr.needsUpdate) {
+      attr.updateRange.offset = d.min * 3;
+      attr.updateRange.count = (d.max - d.min + 1) * 3;
+    }
+    attr.needsUpdate = true;
+  });
+  state.dirtyMeshes.clear();
+  state.needsRender = true;
+}
+
+// 흩어진 대량 변경(채우기·undo·복원 등)은 전체 업로드로 처리
+function fullColorUpdate(mesh) {
+  const attr = mesh.geometry && mesh.geometry.attributes && mesh.geometry.attributes.color;
+  if (!attr) return;
+  mesh.userData._dirtyRange = null;
+  state.dirtyMeshes.delete(mesh);
+  attr.updateRange.offset = 0;
+  attr.updateRange.count = -1;
+  attr.needsUpdate = true;
+  state.needsRender = true;
+}
+
+// ====================== 유틸리티 ======================
+function showToast(msg, duration = 2000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timeout);
+  t._timeout = setTimeout(() => t.classList.remove('show'), duration);
+}
+
+function showBusy(msg) {
+  document.getElementById('busy-text').textContent = msg || '처리 중…';
+  document.getElementById('busy-overlay').classList.add('show');
+}
+function hideBusy() {
+  document.getElementById('busy-overlay').classList.remove('show');
+}
+
+// 화면(sRGB)에서 고른 색 → 렌더링/저장용 linear 색
+function paintColorLinear(hex) {
+  return new THREE.Color(hex).convertSRGBToLinear();
+}
+
+function srgbToLin(c) {
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+
+function hashBuffer(buffer) {
+  const view = new Uint8Array(buffer);
+  let h = 2166136261;
+  const step = Math.max(1, Math.floor(view.length / 4096));
+  for (let i = 0; i < view.length; i += step) {
+    h ^= view[i];
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16) + '_' + view.length;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function u8ToB64(u8) {
+  let s = '';
+  const CH = 0x8000;
+  for (let i = 0; i < u8.length; i += CH) {
+    s += String.fromCharCode.apply(null, u8.subarray(i, i + CH));
+  }
+  return btoa(s);
+}
+function b64ToU8(b) {
+  const s = atob(b);
+  const u = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
+  return u;
+}
+
+// ====================== 모델 로딩 ======================
+function clearCurrentModel() {
+  // 이전 모델 기준으로 놓인 스티커 배치는 무효화 (이미지는 유지)
+  if (state.decal && state.decal.placed) cancelDecal(true);
+  // 새겨진 스티커도 함께 정리 (root의 자식이므로 씬에서는 root 제거로 사라짐)
+  if (state.stickers && state.stickers.length) clearAllStickers();
+  state.stickerRoot = null;
+  if (state.root) {
+    state.scene.remove(state.root);
+    state.root.traverse(obj => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+        else obj.material.dispose();
+      }
+    });
+    state.root = null;
+  }
+  state.editableMeshes = [];
+  state.raycastTargets = [];
+  state.triInfo = null;
+  state.selectedMesh = null;
+  state.selectedEmissiveBackup = null;
+  state.undoStack = [];
+  state.redoStack = [];
+  state.currentStroke = null;
+  state.painting = false;
+  state.lastPaint = null;
+  state.originSnapshot = null;
+  state.dirtyMeshes.clear();
+  document.title = '그림판 3D V8.3 — 3D 모델 색칠';
+  updateUI();
+  state.needsRender = true;
+}
+
+async function loadFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (ext !== 'glb' && ext !== 'gltf' && ext !== 'stl') {
+    showToast('지원하지 않는 파일 형식입니다: ' + ext);
+    return;
+  }
+  if (state.undoStack.length > 0 &&
+      !(await confirmModal('아직 저장하지 않은 작업이 있어요.\n새 파일을 열면 지금 작업은 사라져요. 계속할까요?', { okLabel: '새로 열기', danger: true }))) {
+    return;
+  }
+
+  showBusy('모델 불러오는 중…');
+  try {
+    const buffer = await file.arrayBuffer();
+    const hash = hashBuffer(buffer);
+
+    // 외부 리소스(.bin/텍스처)를 참조하는 .gltf는 단일 파일 환경에서 열 수 없음
+    if (ext === 'gltf') {
+      try {
+        const j = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer)));
+        const hasExternal = (arr) => (arr || []).some(x => x.uri && !/^data:/i.test(x.uri));
+        if (hasExternal(j.buffers) || hasExternal(j.images)) {
+          showToast('외부 파일(.bin·텍스처)을 참조하는 .gltf는 열 수 없습니다. GLB로 변환해 주세요.', 4500);
+          return;
+        }
+      } catch (e) { /* JSON 파싱 실패 시 로더에 맡김 */ }
+    }
+
+    if (ext === 'glb' || ext === 'gltf') {
+      await loadGLB(buffer, file.name);
+    } else {
+      await loadSTL(buffer, file.name);
+    }
+    state.currentFileName = file.name;
+    state.currentFileHash = hash;
+    afterModelLoaded();
+    checkStoredStateForCurrentFile();
+  } catch (e) {
+    console.error(e);
+    showToast('파일 로드 실패: ' + (e.message || e));
+  } finally {
+    hideBusy();
+  }
+}
+
+function loadGLB(buffer, name) {
+  return new Promise((resolve, reject) => {
+    clearCurrentModel();
+    const loader = new GLTFLoader();
+    loader.parse(buffer, '', (gltf) => {
+      const root = gltf.scene || gltf.scenes[0];
+      root.name = root.name || name;
+      prepareLoadedRoot(root);
+      resolve();
+    }, (err) => reject(err));
+  });
+}
+
+function loadSTL(buffer, name) {
+  return new Promise((resolve) => {
+    clearCurrentModel();
+    const loader = new STLLoader();
+    const geometry = loader.parse(buffer);
+    geometry.computeVertexNormals();
+    // STL에는 UV가 없어 내보내기 때 색 텍스처를 만들 수 없으므로 아틀라스 UV 생성
+    ensureAtlasUV(geometry);
+
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xcccccc, roughness: 0.8, metalness: 0.0,
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = name.replace(/\.stl$/i, '') || 'STLMesh';
+
+    const root = new THREE.Group();
+    root.name = name;
+    root.add(mesh);
+
+    prepareLoadedRoot(root);
+    resolve();
+  });
+}
+
+function prepareLoadedRoot(root) {
+  const meshes = [];
+  root.traverse(obj => {
+    if (obj.isMesh && obj.geometry) {
+      if (Array.isArray(obj.material)) {
+        obj.material = obj.material.map(m => cloneToStandard(m));
+      } else {
+        obj.material = cloneToStandard(obj.material);
+      }
+      // UV가 없는 메시는 아틀라스 UV를 생성 (GLB/USDZ 내보내기 텍스처용)
+      if (!obj.geometry.attributes.uv) {
+        const tris = (obj.geometry.index ? obj.geometry.index.count : obj.geometry.attributes.position.count) / 3;
+        if (tris > 0 && tris <= ATLAS_UV_MAX_TRIS) {
+          if (obj.geometry.index) obj.geometry = obj.geometry.toNonIndexed();
+          ensureAtlasUV(obj.geometry);
+        }
+      }
+      // 원본 텍스처를 기억해 둠 (초기화/복원용)
+      const mat = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+      obj.userData.origMap = mat ? (mat.map || null) : null;
+      obj.userData.paintReady = false;
+      obj.userData.origColors = null;
+      meshes.push(obj);
+    }
+  });
+
+  if (meshes.length === 0) {
+    showToast('색칠할 수 있는 부품이 없는 파일이에요.');
+    return;
+  }
+
+  state.root = root;
+  state.editableMeshes = meshes;
+  state.scene.add(root);
+
+  centerAndFrame(root);
+
+  // 마커 경계가 선명하도록 큰 삼각형을 세분화 (vertex color 해상도 확보)
+  state.triInfo = subdivideForPainting();
+
+  // 브러시 가속 그리드를 로딩 스피너 안에서 미리 구축 (첫 획 끊김 방지)
+  state.editableMeshes.forEach(m => buildVertexGrid(m));
+
+  state.originSnapshot = state.editableMeshes.map(m => captureMeshState(m));
+  state.needsRender = true;
+}
+
+function cloneToStandard(mat) {
+  if (!mat) return new THREE.MeshStandardMaterial({ color: 0xcccccc });
+  if (mat.isMeshStandardMaterial) {
+    const c = mat.clone();
+    c.side = mat.side;
+    return c;
+  }
+  return new THREE.MeshStandardMaterial({
+    color: mat.color ? mat.color.clone() : new THREE.Color(0xcccccc),
+    map: mat.map || null,
+    roughness: mat.roughness !== undefined ? mat.roughness : 0.8,
+    metalness: mat.metalness !== undefined ? mat.metalness : 0.0,
+    transparent: mat.transparent || false,
+    opacity: mat.opacity !== undefined ? mat.opacity : 1.0,
+    side: mat.side !== undefined ? mat.side : THREE.FrontSide,
+    name: mat.name || '',
+  });
+}
+
+function centerAndFrame(root) {
+  const box = new THREE.Box3().setFromObject(root);
+  if (box.isEmpty()) return;
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+
+  root.position.x -= center.x;
+  root.position.y -= center.y;
+  root.position.z -= center.z;
+  root.updateMatrixWorld(true);
+
+  const maxDim = Math.max(size.x, size.y, size.z);
+  state.modelMaxDim = maxDim || 1;
+
+  const fov = state.camera.fov * (Math.PI / 180);
+  const distance = Math.abs(maxDim / Math.sin(fov / 2)) * 0.8;
+
+  state.camera.near = Math.max(0.001, maxDim / 1000);
+  state.camera.far = Math.max(1000, maxDim * 100);
+  state.camera.updateProjectionMatrix();
+
+  state.camera.position.set(distance * 0.7, distance * 0.6, distance * 0.9);
+  state.controls.target.set(0, 0, 0);
+  state.controls.update();
+
+  const gridSize = Math.max(maxDim * 2, 1);
+  state.scene.remove(state.grid);
+  state.grid = new THREE.GridHelper(gridSize, 20, 0x666666, 0x444444);
+  state.grid.position.y = -size.y / 2;
+  state.grid.visible = document.getElementById('chk-grid').checked;
+  state.scene.add(state.grid);
+
+  state.scene.remove(state.axis);
+  state.axis = new THREE.AxesHelper(maxDim * 0.5);
+  state.axis.position.y = -size.y / 2 + 0.001;
+  state.axis.visible = document.getElementById('chk-axis').checked;
+  state.scene.add(state.axis);
+}
+
+function afterModelLoaded() {
+  document.title = '그림판 3D V8.3 — ' + state.currentFileName;
+  rebuildMeshList();
+  updateOverlay();
+  updateUI();
+  hideStartScreen();
+  setTool('brush');   // 모델을 열면 바로 칠할 수 있게
+  if (state.triInfo && state.triInfo.after > state.triInfo.before) {
+    console.log(`브러시 정밀도 향상: ${state.triInfo.before.toLocaleString()} → ${state.triInfo.after.toLocaleString()} 삼각형`);
+  }
+  showToast('준비 완료! 오른쪽에서 색을 고르고 모델을 드래그해 칠해보세요 🖌️', 3200);
+  maybeShowGuideOnce();
+}
+
+// ====================== 페인트 준비 (vertex color) ======================
+// 핵심: 텍스처가 있는 모델은 텍스처를 vertex color로 베이크한 뒤
+// map을 제거하고 material.color를 흰색으로 → 칠한 색이 어둡게 곱해지지 않고
+// 그림판3D처럼 '불투명'하게 보임.
+function ensurePaintReady(mesh) {
+  if (mesh.userData.paintReady) return;
+  const g = mesh.geometry;
+  const count = g.attributes.position.count;
+  const mat = getPrimaryMaterial(mesh);
+
+  let colors = new Float32Array(count * 3);
+  let filled = false;
+
+  // 1) 기존 vertex color가 있으면 유지 (정규화된 Uint8/Uint16 처리 포함)
+  if (g.attributes.color) {
+    const old = g.attributes.color;
+    let maxV = 1;
+    if (old.array instanceof Uint8Array) maxV = 255;
+    else if (old.array instanceof Uint16Array) maxV = 65535;
+    const div = old.normalized ? maxV : 1;
+    for (let i = 0; i < count; i++) {
+      colors[i * 3]     = old.getX(i) / div;
+      colors[i * 3 + 1] = old.getY(i) / div;
+      colors[i * 3 + 2] = old.getZ(i) / div;
+    }
+    filled = true;
+  }
+
+  // 2) 텍스처가 있으면 UV로 샘플링하여 베이크
+  if (!filled && mat && mat.map && g.attributes.uv) {
+    filled = bakeMapToVertexColors(mesh, colors);
+  }
+
+  // 3) 둘 다 없으면 material.color로 채움
+  if (!filled) {
+    const base = (mat && mat.color) ? mat.color : new THREE.Color(0xffffff);
+    for (let i = 0; i < count; i++) {
+      colors[i * 3] = base.r;
+      colors[i * 3 + 1] = base.g;
+      colors[i * 3 + 2] = base.b;
+    }
+  }
+
+  g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+  // material 설정: vertexColors 활성화, map 제거, color 흰색(곱셈 중립)
+  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  mats.forEach(m => {
+    if (!m) return;
+    m.vertexColors = true;
+    m.map = null;
+    if (m.color) m.color.setRGB(1, 1, 1);
+    m.needsUpdate = true;
+  });
+
+  // 지우개용 원본 색 보관
+  mesh.userData.origColors = colors.slice();
+  mesh.userData.paintReady = true;
+
+  // 브러시 가속용 공간 그리드 (최초 1회)
+  buildVertexGrid(mesh);
+}
+
+function bakeMapToVertexColors(mesh, colors) {
+  try {
+    const mat = getPrimaryMaterial(mesh);
+    const tex = mat.map;
+    const img = tex.image;
+    if (!img || !img.width || !img.height) return false;
+
+    const w = Math.min(img.width, 1024);
+    const h = Math.min(img.height, 1024);
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const ctx = cv.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, w, h);
+    const data = ctx.getImageData(0, 0, w, h).data;
+
+    const uv = mesh.geometry.attributes.uv;
+    const flipY = tex.flipY; // glTF 텍스처는 flipY=false
+    const baseR = mat.color ? mat.color.r : 1;
+    const baseG = mat.color ? mat.color.g : 1;
+    const baseB = mat.color ? mat.color.b : 1;
+
+    for (let i = 0; i < uv.count; i++) {
+      let u = uv.getX(i) % 1; if (u < 0) u += 1;
+      let v = uv.getY(i) % 1; if (v < 0) v += 1;
+      const px = Math.min(w - 1, Math.floor(u * w));
+      const py = Math.min(h - 1, Math.floor((flipY ? (1 - v) : v) * h));
+      const o = (py * w + px) * 4;
+      // 텍스처(sRGB) → linear, material.color(linear) 곱
+      colors[i * 3]     = srgbToLin(data[o] / 255) * baseR;
+      colors[i * 3 + 1] = srgbToLin(data[o + 1] / 255) * baseG;
+      colors[i * 3 + 2] = srgbToLin(data[o + 2] / 255) * baseB;
+    }
+    return true;
+  } catch (e) {
+    console.warn('텍스처 베이크 실패 (기본색으로 대체):', e);
+    return false;
+  }
+}
+
+// ====================== 페인팅용 메시 세분화 ======================
+// 색은 정점(vertex) 단위로 칠해지고 삼각형 내부에서는 보간되므로,
+// 삼각형이 크면 마커로 칠해도 경계가 흐릿하게 번진다.
+// 로드 시 큰 삼각형을 목표 크기 이하로 세분화해 경계가 선명해지도록 한다.
+// V8.2: 붓 경계 화질 향상 — 정점 간격을 1.2% → 0.8%로 좁힘 (경계 선명도 ≈ 정점 간격)
+// 예산 45만은 저사양 PC·태블릿의 메모리 여유까지 감안한 값
+const SUBDIV_TARGET_PCT = 0.008;   // 목표 변 길이: 모델 크기의 0.8%
+const SUBDIV_TRI_BUDGET = 450000;  // 전체 삼각형 상한 (성능/메모리 균형)
+const SUBDIV_MAX_DEPTH  = 7;       // 삼각형당 최대 분할 깊이 (4^7배, 거대 삼각형 STL 대비)
+
+// [PURE] 삼각형별 필요 분할 깊이 계산 (가장 긴 변 기준)
+function computeTriDepths(pos, targetLocal, maxDepth) {
+  const triCount = Math.floor(pos.count / 3);
+  const depths = new Uint8Array(triCount);
+  for (let t = 0; t < triCount; t++) {
+    const i = t * 3;
+    const ax = pos.getX(i),     ay = pos.getY(i),     az = pos.getZ(i);
+    const bx = pos.getX(i + 1), by = pos.getY(i + 1), bz = pos.getZ(i + 1);
+    const cx = pos.getX(i + 2), cy = pos.getY(i + 2), cz = pos.getZ(i + 2);
+    const e0 = (ax-bx)*(ax-bx) + (ay-by)*(ay-by) + (az-bz)*(az-bz);
+    const e1 = (bx-cx)*(bx-cx) + (by-cy)*(by-cy) + (bz-cz)*(bz-cz);
+    const e2 = (cx-ax)*(cx-ax) + (cy-ay)*(cy-ay) + (cz-az)*(cz-az);
+    const L = Math.sqrt(Math.max(e0, e1, e2));
+    if (L > targetLocal) {
+      depths[t] = Math.min(maxDepth, Math.ceil(Math.log2(L / targetLocal)));
+    }
+  }
+  return depths;
+}
+
+// [PURE] 지오메트리를 depths에 따라 세분화한 새 BufferGeometry 반환
+// 모든 속성(position/normal/uv/color)을 선형 보간, normal은 재정규화
+function buildSubdivided(g, depths) {
+  const attrs = [];
+  ['position', 'normal', 'uv', 'color'].forEach(name => {
+    const a = g.attributes[name];
+    if (!a) return;
+    let src = a;
+    // color가 Uint8/Uint16 정규화 타입이면 float(0~1)로 변환
+    if (name === 'color' && !(a.array instanceof Float32Array)) {
+      let maxV = 1;
+      if (a.array instanceof Uint8Array) maxV = 255;
+      else if (a.array instanceof Uint16Array) maxV = 65535;
+      const div = a.normalized ? maxV : 1;
+      const f = new Float32Array(a.count * a.itemSize);
+      for (let i = 0; i < f.length; i++) f[i] = a.array[i] / div;
+      src = new THREE.BufferAttribute(f, a.itemSize);
+    }
+    attrs.push({ name, itemSize: src.itemSize, src });
+  });
+
+  let stride = 0;
+  attrs.forEach(a => { a.offset = stride; stride += a.itemSize; });
+  const nAttr = attrs.find(a => a.name === 'normal');
+  const normalOff = nAttr ? nAttr.offset : -1;
+
+  const triCount = depths.length;
+  let outTris = 0;
+  for (let t = 0; t < triCount; t++) outTris += Math.pow(4, depths[t]);
+  const out = new Float32Array(outTris * 3 * stride);
+  let w = 0;
+
+  const readVert = (i) => {
+    const v = new Float32Array(stride);
+    for (const a of attrs) {
+      for (let k = 0; k < a.itemSize; k++) v[a.offset + k] = a.src.array[i * a.itemSize + k];
+    }
+    return v;
+  };
+  const mid = (u, v) => {
+    const m = new Float32Array(stride);
+    for (let k = 0; k < stride; k++) m[k] = (u[k] + v[k]) * 0.5;
+    if (normalOff >= 0) {
+      const nx = m[normalOff], ny = m[normalOff + 1], nz = m[normalOff + 2];
+      const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      if (len > 1e-8) {
+        m[normalOff] = nx / len; m[normalOff + 1] = ny / len; m[normalOff + 2] = nz / len;
+      }
+    }
+    return m;
+  };
+  const emit = (a, b, c, d) => {
+    if (d === 0) {
+      out.set(a, w); w += stride;
+      out.set(b, w); w += stride;
+      out.set(c, w); w += stride;
+      return;
+    }
+    const ab = mid(a, b), bc = mid(b, c), ca = mid(c, a);
+    emit(a, ab, ca, d - 1);
+    emit(ab, b, bc, d - 1);
+    emit(ca, bc, c, d - 1);
+    emit(ab, bc, ca, d - 1);
+  };
+
+  for (let t = 0; t < triCount; t++) {
+    const i = t * 3;
+    emit(readVert(i), readVert(i + 1), readVert(i + 2), depths[t]);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  const vertCount = outTris * 3;
+  attrs.forEach(a => {
+    const arr = new Float32Array(vertCount * a.itemSize);
+    for (let i = 0; i < vertCount; i++) {
+      for (let k = 0; k < a.itemSize; k++) {
+        arr[i * a.itemSize + k] = out[i * stride + a.offset + k];
+      }
+    }
+    geo.setAttribute(a.name, new THREE.BufferAttribute(arr, a.itemSize));
+  });
+  geo.computeBoundingBox();
+  geo.computeBoundingSphere();
+  return geo;
+}
+
+function subdivideForPainting() {
+  const info = { before: 0, after: 0 };
+  state.raycastTargets = [];
+  const ws = new THREE.Vector3();
+
+  // 1단계: 메시별 준비 (비인덱스 변환 + 로컬 목표 변 길이 계산)
+  const jobs = [];
+  state.editableMeshes.forEach(mesh => {
+    const g0 = mesh.geometry;
+    const tri0 = (g0.index ? g0.index.count : g0.attributes.position.count) / 3;
+    info.before += tri0;
+
+    // 멀티 재질/모프 타깃 메시는 세분화 시 구조가 깨지므로 건너뜀
+    const skip =
+      (g0.groups && g0.groups.length > 1) ||
+      (mesh.morphTargetInfluences && mesh.morphTargetInfluences.length > 0);
+    if (skip) {
+      state.raycastTargets.push(mesh);
+      info.after += tri0;
+      return;
+    }
+
+    mesh.updateMatrixWorld(true);
+    mesh.getWorldScale(ws);
+    const scl = Math.max(Math.abs(ws.x), Math.abs(ws.y), Math.abs(ws.z)) || 1;
+    const targetLocal = Math.max(1e-12, (state.modelMaxDim * SUBDIV_TARGET_PCT) / scl);
+    const g = g0.index ? g0.toNonIndexed() : g0;
+    jobs.push({ mesh, g0, g, targetLocal, tri0, depths: null });
+  });
+
+  // 2단계: 예산에 맞을 때까지 목표 변 길이를 키우며 분할량 조정
+  //         (전역 깊이 제한 방식과 달리 큰 면도 균일한 품질을 얻음)
+  let scale = 1;
+  for (let iter = 0; iter < 24; iter++) {
+    let total = info.after;
+    jobs.forEach(j => {
+      j.depths = computeTriDepths(j.g.attributes.position, j.targetLocal * scale, SUBDIV_MAX_DEPTH);
+      for (let i = 0; i < j.depths.length; i++) total += Math.pow(4, j.depths[i]);
+    });
+    if (total <= SUBDIV_TRI_BUDGET) break;
+    scale *= 1.09;
+  }
+  // 실제 달성된 정점 간격 (마커/지우개 경계 다듬기에 사용)
+  state.subdivSpacing = state.modelMaxDim * SUBDIV_TARGET_PCT * scale;
+
+  // 3단계: 세분화 실행 + 레이캐스트용 저해상도 프록시 생성
+  jobs.forEach(j => {
+    let needs = false;
+    for (let i = 0; i < j.depths.length; i++) if (j.depths[i] > 0) { needs = true; break; }
+    if (!needs) {
+      state.raycastTargets.push(j.mesh);
+      info.after += j.tri0;
+      return;
+    }
+    j.mesh.geometry = buildSubdivided(j.g, j.depths);
+    info.after += j.mesh.geometry.attributes.position.count / 3;
+
+    // 세분화된 지오메트리는 레이캐스트가 느리므로 원본으로 레이캐스트
+    const proxy = new THREE.Mesh(j.g0, new THREE.MeshBasicMaterial());
+    proxy.visible = false;
+    proxy.userData.isRaycastProxy = true;
+    proxy.userData.target = j.mesh;
+    j.mesh.add(proxy);
+    j.mesh.userData.raycastProxy = proxy;
+    state.raycastTargets.push(proxy);
+  });
+
+  info.before = Math.round(info.before);
+  info.after = Math.round(info.after);
+  return info;
+}
+
+// ====================== 정점 공간 그리드 (브러시 가속) ======================
+// 세분화 후 정점이 수십만 개가 되므로, 브러시마다 전체 정점을 훑는 대신
+// 공간 해시 그리드로 브러시 반경 근처의 정점만 조회한다.
+function buildVertexGrid(mesh) {
+  if (mesh.userData.vgrid) return;
+  const g = mesh.geometry;
+  if (!g.boundingBox) g.computeBoundingBox();
+  const bb = g.boundingBox;
+  const sx = bb.max.x - bb.min.x, sy = bb.max.y - bb.min.y, sz = bb.max.z - bb.min.z;
+  const maxDim = Math.max(sx, sy, sz) || 1;
+  const cell = maxDim / 64;
+  const inv = 1 / cell;
+  const pos = g.attributes.position;
+  const map = new Map();
+  for (let i = 0; i < pos.count; i++) {
+    const ix = Math.min(127, Math.max(0, Math.floor((pos.getX(i) - bb.min.x) * inv)));
+    const iy = Math.min(127, Math.max(0, Math.floor((pos.getY(i) - bb.min.y) * inv)));
+    const iz = Math.min(127, Math.max(0, Math.floor((pos.getZ(i) - bb.min.z) * inv)));
+    const key = (ix << 14) | (iy << 7) | iz;
+    let arr = map.get(key);
+    if (!arr) { arr = []; map.set(key, arr); }
+    arr.push(i);
+  }
+  mesh.userData.vgrid = { cell, min: bb.min.clone(), map };
+}
+
+// ====================== 상호작용 ======================
+function raycastAt(event) {
+  const rect = state.renderer.domElement.getBoundingClientRect();
+  state.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  state.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  state.raycaster.setFromCamera(state.pointer, state.camera);
+  const targets = state.raycastTargets.length ? state.raycastTargets : state.editableMeshes;
+  const hits = state.raycaster.intersectObjects(targets, false);
+  if (!hits.length) return null;
+  const h = hits[0];
+  // 프록시에 맞았으면 실제(세분화된) 메시로 바꿔서 반환
+  if (h.object.userData.isRaycastProxy) h.object = h.object.userData.target;
+  return h;
+}
+
+// 새긴 스티커 레이캐스트 (스포이드용) — raycastAt이 세팅한 레이를 재사용
+function raycastStickers() {
+  if (!state.stickers.length) return null;
+  const meshes = [];
+  state.stickers.forEach(s => { for (const m of s.meshes) meshes.push(m); });
+  const hits = state.raycaster.intersectObjects(meshes, false);
+  return hits.length ? hits[0] : null;
+}
+
+// 스티커 텍스처에서 색 추출. 투명한 부분이면 false를 돌려 아래 모델 색으로 넘어간다.
+function pickStickerColorAt(hit) {
+  if (!hit.uv) return false;
+  const rec = state.stickers.find(s => s.meshes.indexOf(hit.object) >= 0);
+  if (!rec || !rec.canvas) return false;
+  const cv = rec.canvas;
+  const x = Math.min(cv.width - 1, Math.max(0, Math.floor(hit.uv.x * cv.width)));
+  const y = Math.min(cv.height - 1, Math.max(0, Math.floor((1 - hit.uv.y) * cv.height)));
+  let p;
+  try {
+    p = cv.getContext('2d', { willReadFrequently: true }).getImageData(x, y, 1, 1).data;
+  } catch (e) {
+    return false;
+  }
+  if (p[3] < 30) return false;   // 투명 영역 → 아래 모델 색 사용
+  const hex = '#' + [p[0], p[1], p[2]].map(v => v.toString(16).padStart(2, '0')).join('');
+  setCurrentColor(hex);
+  showToast('스티커에서 색을 가져왔어요: ' + hex);
+  return true;
+}
+
+// 모델 표면에서 색을 추출해 현재 색으로 설정 (스포이드)
+function pickColorAt(hit) {
+  const mesh = hit.object;
+  const c = new THREE.Color();
+  let found = false;
+
+  if (mesh.userData.paintReady && mesh.geometry.attributes.color && mesh.userData.vgrid) {
+    mesh.updateMatrixWorld();
+    _invMat.copy(mesh.matrixWorld).invert();
+    const local = hit.point.clone().applyMatrix4(_invMat);
+    const grid = mesh.userData.vgrid;
+    const inv = 1 / grid.cell;
+    const cx = Math.floor((local.x - grid.min.x) * inv);
+    const cy = Math.floor((local.y - grid.min.y) * inv);
+    const cz = Math.floor((local.z - grid.min.z) * inv);
+    const pos = mesh.geometry.attributes.position;
+    let best = -1, bestD = Infinity;
+    for (let ix = Math.max(0, cx - 2); ix <= Math.min(127, cx + 2); ix++) {
+      for (let iy = Math.max(0, cy - 2); iy <= Math.min(127, cy + 2); iy++) {
+        for (let iz = Math.max(0, cz - 2); iz <= Math.min(127, cz + 2); iz++) {
+          const arr = grid.map.get((ix << 14) | (iy << 7) | iz);
+          if (!arr) continue;
+          for (let k = 0; k < arr.length; k++) {
+            const i = arr[k];
+            const dx = pos.getX(i) - local.x;
+            const dy = pos.getY(i) - local.y;
+            const dz = pos.getZ(i) - local.z;
+            const d2 = dx * dx + dy * dy + dz * dz;
+            if (d2 < bestD) { bestD = d2; best = i; }
+          }
+        }
+      }
+    }
+    if (best >= 0) {
+      const col = mesh.geometry.attributes.color;
+      c.setRGB(col.getX(best), col.getY(best), col.getZ(best));
+      c.convertLinearToSRGB();
+      found = true;
+    }
+  }
+  if (!found) {
+    const mat = getPrimaryMaterial(mesh);
+    if (mat && mat.color) {
+      c.copy(mat.color).convertLinearToSRGB();
+      found = true;
+    }
+  }
+  if (found) {
+    const hex = '#' + c.getHexString();
+    setCurrentColor(hex);
+    showToast('색을 가져왔어요: ' + hex);
+  }
+}
+
+// ====================== 이미지 스티커 (데칼) ======================
+// 클립보드/파일 이미지를 모델 표면에 투영해 '정점 색'으로 새긴다.
+// → 브러시와 같은 파이프라인이므로 undo, 자동저장, GLB 내보내기 모두 그대로 동작.
+
+const DECAL_MAX_RES = 1024;      // 이미지 샘플링 해상도 상한
+const DECAL_FACING_DOT = 0.1;    // 이 값보다 법선이 반대면 칠하지 않음 (뒷면 보호)
+
+function setDecalImage(imgSource, label) {
+  const d = state.decal;
+  const w0 = imgSource.naturalWidth || imgSource.width;
+  const h0 = imgSource.naturalHeight || imgSource.height;
+  if (!w0 || !h0) { showToast('이미지를 읽을 수 없습니다.'); return; }
+
+  const scale = Math.min(1, DECAL_MAX_RES / Math.max(w0, h0));
+  const w = Math.max(1, Math.round(w0 * scale));
+  const h = Math.max(1, Math.round(h0 * scale));
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(imgSource, 0, 0, w, h);
+
+  d.canvas = cv;
+  d.pix = ctx.getImageData(0, 0, w, h).data;
+  d.pixW = w; d.pixH = h;
+  d.aspect = w / h;
+  d.placed = false;
+  d.imgKey = null;   // 기본 스티커 클릭 시에는 호출 직후 다시 설정됨
+
+  // 미리보기 텍스처 갱신
+  ensureDecalPreview();
+  if (d.texture) d.texture.dispose();
+  d.texture = new THREE.Texture(cv);
+  d.texture.encoding = THREE.sRGBEncoding;
+  d.texture.minFilter = THREE.LinearFilter;
+  d.texture.needsUpdate = true;
+  d.decalMat.map = d.texture;
+  d.decalMat.needsUpdate = true;
+  updateDecalFlipTexture();
+  d.group.visible = false;
+  d.projGroup.visible = false;
+  clearDecalProjection();
+
+  // 썸네일 표시
+  const thumb = document.getElementById('decal-thumb');
+  thumb.src = cv.toDataURL();
+  document.getElementById('decal-thumb-wrap').classList.add('has-image');
+
+  setMode('decal');
+  updateDecalUI();
+  showToast((label || '이미지') + ' 준비 완료 — 모델 위를 클릭해 위치를 잡으세요.');
+}
+
+function ensureDecalPreview() {
+  const d = state.decal;
+  if (d.group) return;
+  d.decalMat = new THREE.MeshBasicMaterial({
+    transparent: true, opacity: 0.95,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
+  });
+
+  // 폴백 평면: 곡면 투영이 비어 있을 때만 표시
+  d.planeMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), d.decalMat);
+  d.planeMesh.renderOrder = 999;
+  d.planeMesh.visible = false;
+
+  const framePts = [
+    new THREE.Vector3(-0.5, -0.5, 0), new THREE.Vector3(0.5, -0.5, 0),
+    new THREE.Vector3(0.5, 0.5, 0), new THREE.Vector3(-0.5, 0.5, 0),
+  ];
+  const frame = new THREE.LineLoop(
+    new THREE.BufferGeometry().setFromPoints(framePts),
+    new THREE.LineBasicMaterial({ color: 0x00e0ff, depthTest: false, transparent: true, opacity: 0.55 })
+  );
+  frame.renderOrder = 1000;
+
+  d.group = new THREE.Group();
+  d.group.add(d.planeMesh);
+  d.group.add(frame);
+  d.group.visible = false;
+  state.scene.add(d.group);
+
+  // 곡면 투영 미리보기: DecalGeometry가 월드 좌표를 만들어 주므로 변환 없이 담는다
+  d.projGroup = new THREE.Group();
+  d.projGroup.visible = false;
+  state.scene.add(d.projGroup);
+}
+
+function decalWorldSize() {
+  const d = state.decal;
+  const w = state.modelMaxDim * (d.sizePct / 100);
+  return { w, h: w / d.aspect };
+}
+
+const _dq1 = new THREE.Quaternion();
+const _dq2 = new THREE.Quaternion();
+const _zAxis = new THREE.Vector3(0, 0, 1);
+
+function decalQuaternion() {
+  const d = state.decal;
+  _dq1.setFromUnitVectors(_zAxis, d.normal);
+  _dq2.setFromAxisAngle(d.normal, d.rotation * Math.PI / 180);
+  return _dq2.clone().multiply(_dq1);
+}
+
+function updateDecalTransform() {
+  const d = state.decal;
+  if (!d.group || !d.placed) return;
+  const { w, h } = decalWorldSize();
+  d.group.position.copy(d.position).addScaledVector(d.normal, state.modelMaxDim * 0.004);
+  d.group.quaternion.copy(decalQuaternion());
+  d.group.scale.set(w, h, 1);
+  d.group.visible = (state.mode === 'decal');
+  d.projGroup.visible = (state.mode === 'decal');
+  d.decalMat.opacity = Math.max(0.25, d.opacity / 100) * 0.95;
+  scheduleDecalRebuild();
+  state.needsRender = true;
+}
+
+function clearDecalProjection() {
+  const d = state.decal;
+  if (!d.projGroup) return;
+  for (const m of d.projMeshes) {
+    d.projGroup.remove(m);
+    m.geometry.dispose();
+  }
+  d.projMeshes = [];
+}
+
+// 드래그 중에는 40ms 간격으로만 재생성하고, 마지막 상태는 트레일링 타이머로 보장
+let _decalRebuildLast = 0;
+let _decalRebuildTimer = null;
+function scheduleDecalRebuild() {
+  const now = performance.now();
+  if (_decalRebuildTimer) { clearTimeout(_decalRebuildTimer); _decalRebuildTimer = null; }
+  if (now - _decalRebuildLast >= 40) {
+    _decalRebuildLast = now;
+    rebuildDecalProjection();
+  } else {
+    _decalRebuildTimer = setTimeout(() => {
+      _decalRebuildLast = performance.now();
+      rebuildDecalProjection();
+    }, 45);
+  }
+}
+
+// 스티커가 곡면을 따라 감싸진 모습으로 보이도록,
+// 데칼 박스로 표면 삼각형을 잘라내(clipping) 투영 메시를 만든다.
+// 세분화 전 원본(레이캐스트 프록시) 지오메트리를 사용해 드래그 중에도 빠르다.
+const _decalEuler = new THREE.Euler();
+function rebuildDecalProjection() {
+  const d = state.decal;
+  if (!d.projGroup || !d.placed || !d.texture) return;
+  clearDecalProjection();
+
+  const { w, h } = decalWorldSize();
+  const depth = Math.max(w, h) * 0.6;   // 새기기(stamp)와 같은 투영 두께
+  const size = new THREE.Vector3(w, h, depth);
+  const q = decalQuaternion();
+  _decalEuler.setFromQuaternion(q);
+  const decalBB = new THREE.Box3(
+    new THREE.Vector3(-0.5, -0.5, -0.5),
+    new THREE.Vector3(0.5, 0.5, 0.5)
+  ).applyMatrix4(new THREE.Matrix4().compose(d.position, q, size));
+
+  state.editableMeshes.forEach(mesh => {
+    mesh.updateMatrixWorld();
+    const g0 = mesh.geometry;
+    if (!g0.boundingBox) g0.computeBoundingBox();
+    const meshBB = g0.boundingBox.clone().applyMatrix4(mesh.matrixWorld);
+    if (!meshBB.intersectsBox(decalBB)) return;   // 빠른 제외
+
+    // 저해상도 원본 프록시가 있으면 그것으로 클리핑 (세분화 메시는 느림)
+    const src = mesh.userData.raycastProxy || mesh;
+    if (!src.geometry.attributes.normal) src.geometry.computeVertexNormals();
+
+    let dg;
+    try {
+      dg = new DecalGeometry(src, d.position, _decalEuler, size);
+    } catch (e) {
+      return;
+    }
+    const posAttr = dg.attributes.position;
+    if (!posAttr || posAttr.count === 0) { dg.dispose(); return; }
+
+    const pm = new THREE.Mesh(dg, d.decalMat);
+    pm.renderOrder = 999;
+    d.projGroup.add(pm);
+    d.projMeshes.push(pm);
+  });
+
+  // 투영 결과가 없을 때만 폴백 평면 표시 (예: 모델 밖)
+  d.planeMesh.visible = d.projMeshes.length === 0;
+  state.needsRender = true;
+}
+
+function updateDecalFlipTexture() {
+  const d = state.decal;
+  if (!d.texture) return;
+  d.texture.wrapS = THREE.RepeatWrapping;
+  d.texture.repeat.x = d.flipX ? -1 : 1;
+  d.texture.offset.x = d.flipX ? 1 : 0;
+  d.texture.needsUpdate = true;
+  state.needsRender = true;
+}
+
+function placeDecalFromHit(hit) {
+  const d = state.decal;
+  d.position.copy(hit.point);
+  if (hit.face) {
+    d.normal.copy(hit.face.normal).transformDirection(hit.object.matrixWorld).normalize();
+  }
+  d.placed = true;
+  updateDecalTransform();
+  updateDecalUI();
+}
+
+function cancelDecal(silent) {
+  const d = state.decal;
+  d.placed = false;
+  d.dragging = false;
+  if (d.group) d.group.visible = false;
+  if (d.projGroup) d.projGroup.visible = false;
+  clearDecalProjection();
+  state.needsRender = true;
+  updateDecalUI();
+  if (!silent) showToast('스티커를 취소했습니다.');
+}
+
+// 이미지 픽셀 이중선형(bilinear) 샘플링 → [r,g,b,a] (0~1)
+function sampleDecalPixel(u, v, out) {
+  const d = state.decal;
+  const x = u * d.pixW - 0.5;
+  const y = v * d.pixH - 0.5;
+  const x0 = Math.floor(x), y0 = Math.floor(y);
+  const fx = x - x0, fy = y - y0;
+  const x1 = Math.min(d.pixW - 1, x0 + 1);
+  const y1 = Math.min(d.pixH - 1, y0 + 1);
+  const cx0 = Math.max(0, x0), cy0 = Math.max(0, y0);
+  const p = d.pix;
+  const o00 = (cy0 * d.pixW + cx0) * 4;
+  const o10 = (cy0 * d.pixW + x1) * 4;
+  const o01 = (y1 * d.pixW + cx0) * 4;
+  const o11 = (y1 * d.pixW + x1) * 4;
+  for (let c = 0; c < 4; c++) {
+    const top = p[o00 + c] * (1 - fx) + p[o10 + c] * fx;
+    const bot = p[o01 + c] * (1 - fx) + p[o11 + c] * fx;
+    out[c] = (top * (1 - fy) + bot * fy) / 255;
+  }
+}
+
+// ====================== 새긴 스티커 (텍스처 데칼) ======================
+// V8.1: 정점 색으로 굽던 방식(해상도 = 정점 밀도, 약 20px 수준)을 버리고,
+// 새기기 시 DecalGeometry + 원본 이미지 텍스처를 가진 얇은 메시를 모델 위에
+// 영구히 얹는다 → 원본 이미지 해상도(최대 1024px) 그대로 선명하게 유지되고
+// GLB/USDZ 내보내기에도 텍스처 메시로 그대로 포함된다.
+
+function ensureStickerRoot() {
+  if (state.stickerRoot && state.stickerRoot.parent === state.root) return state.stickerRoot;
+  const g = new THREE.Group();
+  g.name = '스티커';
+  state.root.add(g);
+  state.stickerRoot = g;
+  return g;
+}
+
+// p: { pos:[3], normal:[3], rotation(deg), sizePct, aspect, opacity(0~100), img, flip }
+function stickerWorldTransform(p, nrm) {
+  const w = state.modelMaxDim * (p.sizePct / 100);
+  const h = w / (p.aspect || 1);
+  const depth = Math.max(w, h) * 0.6;
+  const q1 = new THREE.Quaternion().setFromUnitVectors(_zAxis, nrm);
+  const q = new THREE.Quaternion().setFromAxisAngle(nrm, (p.rotation || 0) * Math.PI / 180).multiply(q1);
+  return { size: new THREE.Vector3(w, h, depth), q };
+}
+
+// 현재 모델 표면에 스티커 메시를 만들어 얹는다. 실패(닿는 면 없음) 시 null.
+function createSticker(canvas, p) {
+  if (!state.root) return null;
+  const nrm = new THREE.Vector3().fromArray(p.normal).normalize();
+  const pos = new THREE.Vector3().fromArray(p.pos);
+  const { size, q } = stickerWorldTransform(p, nrm);
+  _decalEuler.setFromQuaternion(q);
+  const decalBB = new THREE.Box3(
+    new THREE.Vector3(-0.5, -0.5, -0.5),
+    new THREE.Vector3(0.5, 0.5, 0.5)
+  ).applyMatrix4(new THREE.Matrix4().compose(pos, q, size));
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.encoding = THREE.sRGBEncoding;
+  try { texture.anisotropy = Math.min(8, state.renderer.capabilities.getMaxAnisotropy()); } catch (e) {}
+  const material = new THREE.MeshStandardMaterial({
+    map: texture,
+    transparent: true,
+    opacity: (p.opacity !== undefined ? p.opacity : 100) / 100,
+    roughness: 0.9,
+    metalness: 0,
+    depthWrite: false,
+    polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
+  });
+
+  // 다른 뷰어·AR에서도 z-파이팅이 없도록 표면에서 살짝 띄운다
+  const lift = new THREE.Vector3(0, 0, 1).applyQuaternion(q)
+    .multiplyScalar(state.modelMaxDim * 0.0015);
+  state.root.updateMatrixWorld(true);
+  const rootInv = new THREE.Matrix4().copy(state.root.matrixWorld).invert();
+
+  const meshes = [];
+  state.editableMeshes.forEach(mesh => {
+    mesh.updateMatrixWorld();
+    const g0 = mesh.geometry;
+    if (!g0.boundingBox) g0.computeBoundingBox();
+    const meshBB = g0.boundingBox.clone().applyMatrix4(mesh.matrixWorld);
+    if (!meshBB.intersectsBox(decalBB)) return;
+    // 세분화 전 원본(프록시) 지오메트리로 클리핑 → 빠르고 내보내기도 가벼움
+    const src = mesh.userData.raycastProxy || mesh;
+    if (!src.geometry.attributes.normal) src.geometry.computeVertexNormals();
+    let dg;
+    try { dg = new DecalGeometry(src, pos, _decalEuler, size); } catch (e) { return; }
+    if (!dg.attributes.position || dg.attributes.position.count === 0) { dg.dispose(); return; }
+    dg.translate(lift.x, lift.y, lift.z);
+    dg.applyMatrix4(rootInv);          // 루트(모델) 자식 좌표계로 변환
+    const m = new THREE.Mesh(dg, material);
+    m.name = '스티커';
+    m.renderOrder = 5 + state.stickers.length;
+    meshes.push(m);
+  });
+  if (meshes.length === 0) {
+    texture.dispose();
+    material.dispose();
+    return null;
+  }
+  const group = ensureStickerRoot();
+  meshes.forEach(m => group.add(m));
+  const rec = { meshes, material, texture, canvas, data: { ...p } };
+  state.stickers.push(rec);
+  state.needsRender = true;
+  return rec;
+}
+
+// 붙이기/떼기 (undo·redo·삭제 버튼 공용)
+function setStickerAttached(rec, attached) {
+  if (attached) {
+    const group = ensureStickerRoot();
+    rec.meshes.forEach(m => group.add(m));
+    if (!state.stickers.includes(rec)) state.stickers.push(rec);
+  } else {
+    rec.meshes.forEach(m => { if (m.parent) m.parent.remove(m); });
+    state.stickers = state.stickers.filter(s => s !== rec);
+  }
+  state.needsRender = true;
+  updateStickerUI();
+}
+
+function pushStickerHistory(op, recs) {
+  let bytes = 0;
+  recs.forEach(r => { bytes += r.canvas ? r.canvas.width * r.canvas.height * 4 : 4096; });
+  state.undoStack.push({ sticker: { op, recs }, bytes });
+  while (state.undoStack.length > state.MAX_HISTORY) state.undoStack.shift();
+  state.redoStack = [];
+  updateUI();
+  scheduleSave();
+}
+
+function clearAllStickers() {
+  state.stickers.slice().forEach(rec => {
+    rec.meshes.forEach(m => { if (m.parent) m.parent.remove(m); m.geometry.dispose(); });
+    rec.material.dispose();
+    rec.texture.dispose();
+  });
+  state.stickers = [];
+  state.needsRender = true;
+  updateStickerUI();
+}
+
+function updateStickerUI() {
+  const n = state.stickers.length;
+  const cnt = document.getElementById('sticker-count');
+  if (cnt) cnt.textContent = n;
+  const b1 = document.getElementById('btn-sticker-undo-last');
+  const b2 = document.getElementById('btn-sticker-clear');
+  if (b1) b1.disabled = n === 0;
+  if (b2) b2.disabled = n === 0;
+}
+
+// ---------- 기본 스티커 라이브러리 (이모지 → 고해상도 캔버스, 파일 크기 0) ----------
+const STICKER_LIBRARY = ['😀','😍','😎','🥳','❤️','⭐','🌈','🔥','👍','🍀','⚽','🎵','👑','🦋','🚀'];
+
+function renderEmojiSticker(emoji) {
+  const S = 512;
+  const cv = document.createElement('canvas');
+  cv.width = S; cv.height = S;
+  const ctx = cv.getContext('2d');
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  let fontPx = 400;
+  ctx.font = `${fontPx}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+  const mw = ctx.measureText(emoji).width;
+  if (mw > S * 0.9) {
+    fontPx = Math.floor(fontPx * (S * 0.9) / mw);
+    ctx.font = `${fontPx}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+  }
+  ctx.fillText(emoji, S / 2, S / 2 + S * 0.04);
+  return cv;
+}
+
+function buildStickerLibrary() {
+  const el = document.getElementById('sticker-lib');
+  if (!el) return;
+  el.innerHTML = '';
+  STICKER_LIBRARY.forEach(e => {
+    const b = document.createElement('button');
+    b.className = 'emoji-btn';
+    b.textContent = e;
+    b.title = '기본 스티커: ' + e;
+    b.addEventListener('click', () => {
+      setDecalImage(renderEmojiSticker(e), '스티커 ' + e);
+      state.decal.imgKey = 'emoji:' + e;
+    });
+    el.appendChild(b);
+  });
+}
+
+function flipCanvasX(src) {
+  const cv = document.createElement('canvas');
+  cv.width = src.width; cv.height = src.height;
+  const ctx = cv.getContext('2d');
+  ctx.translate(cv.width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(src, 0, 0);
+  return cv;
+}
+
+// 저장 데이터에서 스티커 복원 (자동 저장 이어하기)
+function loadImageFromURL(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+async function rebuildStickersFromData(list) {
+  for (const p of list) {
+    try {
+      let canvas = null;
+      if (p.img && p.img.indexOf('emoji:') === 0) {
+        canvas = renderEmojiSticker(p.img.slice(6));
+        if (p.flip) canvas = flipCanvasX(canvas);
+      } else if (p.dataURL) {
+        const img = await loadImageFromURL(p.dataURL);
+        canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+      }
+      if (canvas) createSticker(canvas, p);
+    } catch (e) {
+      console.warn('스티커 복원 실패:', e);
+    }
+  }
+  updateStickerUI();
+  state.needsRender = true;
+}
+
+// 데칼 새기기 (도장): 현재 미리보기 위치에 텍스처 스티커 생성
+function applyDecalStamp() {
+  const d = state.decal;
+  if (!state.root) { showToast('모델을 먼저 불러오세요.'); return; }
+  if (!d.canvas) { showToast('먼저 스티커를 고르거나 이미지를 붙여넣으세요.'); return; }
+  if (!d.placed) { showToast('모델 위를 클릭해 스티커 위치를 먼저 잡으세요.'); return; }
+
+  // 좌우 반전을 픽셀에 반영한 스냅샷 (스티커마다 독립된 텍스처)
+  const cv = d.flipX ? flipCanvasX(d.canvas) : (() => {
+    const c = document.createElement('canvas');
+    c.width = d.canvas.width; c.height = d.canvas.height;
+    c.getContext('2d').drawImage(d.canvas, 0, 0);
+    return c;
+  })();
+
+  const p = {
+    pos: d.position.toArray(),
+    normal: d.normal.toArray(),
+    rotation: d.rotation,
+    sizePct: d.sizePct,
+    aspect: d.aspect,
+    opacity: d.opacity,
+    img: d.imgKey || null,
+    flip: d.flipX,
+  };
+  const rec = createSticker(cv, p);
+  if (!rec) {
+    showToast('스티커 영역에 닿는 표면이 없습니다. 위치나 크기를 조정해 보세요.', 2800);
+    return;
+  }
+  pushStickerHistory('add', [rec]);
+
+  // 이미지는 유지하고 배치만 해제 → 연달아 여러 개 붙이기 편하게
+  d.placed = false;
+  if (d.group) d.group.visible = false;
+  if (d.projGroup) d.projGroup.visible = false;
+  clearDecalProjection();
+  updateDecalUI();
+  updateStickerUI();
+  state.needsRender = true;
+  showToast('스티커를 새겼어요! 원본 화질 그대로예요 ✨ (Ctrl+Z로 취소 가능)', 2600);
+}
+
+function updateDecalUI() {
+  const d = state.decal;
+  const hasImg = !!d.pix;
+  document.getElementById('btn-decal-apply').disabled = !(hasImg && d.placed);
+  document.getElementById('btn-decal-cancel').disabled = !(hasImg && d.placed);
+}
+
+async function pasteDecalFromClipboardAPI() {
+  try {
+    const items = await navigator.clipboard.read();
+    for (const item of items) {
+      const type = item.types.find(t => t.startsWith('image/'));
+      if (type) {
+        const blob = await item.getType(type);
+        const img = await blobToImage(blob);
+        setDecalImage(img, '클립보드 이미지');
+        return;
+      }
+    }
+    showToast('클립보드에 이미지가 없습니다. 이미지를 복사한 뒤 다시 시도하세요.', 2800);
+  } catch (e) {
+    showToast('클립보드 접근이 거부되었습니다. Ctrl+V로 붙여넣어 보세요.', 2800);
+  }
+}
+
+function blobToImage(blob) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('이미지 로드 실패')); };
+    img.src = url;
+  });
+}
+
+const _activePointers = new Set();
+
+function onPointerDown(event) {
+  _activePointers.add(event.pointerId);
+  // 색칠 도중 두 번째 손가락이 닿으면(핀치 제스처) 진행 중인 스트로크를 종료
+  if (_activePointers.size > 1 && state.painting) {
+    state.painting = false;
+    state.lastPaint = null;
+    endStroke();
+    updateMeshList();
+    updateSelectionInfo();
+    return;
+  }
+  if (event.button !== 0) return;
+  if (!state.root) return;
+
+  if (state.mode === 'view') {
+    const hit = raycastAt(event);
+    selectMesh(hit ? hit.object : null);
+  } else if (state.mode === 'paintAll') {
+    paintAll(state.currentColor);
+  } else if (state.mode === 'paintMesh') {
+    const hit = raycastAt(event);
+    if (hit) {
+      selectMesh(hit.object);
+      paintMesh(hit.object, state.currentColor);
+    }
+  } else if (state.mode === 'decal') {
+    if (!state.decal.pix) {
+      showToast('먼저 이미지를 붙여넣으세요. (Ctrl+V)');
+      return;
+    }
+    const hit = raycastAt(event);
+    if (hit) {
+      placeDecalFromHit(hit);
+      state.decal.dragging = true;
+      try { state.renderer.domElement.setPointerCapture(event.pointerId); } catch (e) {}
+    }
+  } else if (state.mode === 'paintBrush') {
+    // 스포이드 브러시 또는 Alt+클릭: 색 추출만 하고 색칠하지 않음
+    if (state.brush.type === 'picker' || event.altKey) {
+      const hit = raycastAt(event);
+      // 새긴 스티커가 더 가까이 맞으면 스티커의 텍스처 색을 추출 (V8.2)
+      const stickerHit = raycastStickers();
+      if (stickerHit && (!hit || stickerHit.distance <= hit.distance + 1e-6)) {
+        if (pickStickerColorAt(stickerHit)) return;
+      }
+      if (hit) pickColorAt(hit);
+      return;
+    }
+    if (_activePointers.size > 1) return;   // 두 손가락 제스처는 색칠하지 않음
+    beginStroke();
+    state.painting = true;
+    state.lastPaint = null;
+    if (state.brush.type !== 'eraser') addRecentColor(state.currentColor);
+    try { state.renderer.domElement.setPointerCapture(event.pointerId); } catch (e) {}
+    handleBrushMove(event);
+  }
+}
+
+function onPointerUp(event) {
+  _activePointers.delete(event.pointerId);
+  if (state.decal.dragging) state.decal.dragging = false;
+  if (state.painting) {
+    state.painting = false;
+    state.lastPaint = null;
+    endStroke();
+    updateMeshList();
+    updateSelectionInfo();
+  }
+}
+
+let _lastHoverT = 0;
+function onPointerMove(event) {
+  if (state.mode === 'decal') {
+    if (!state.decal.dragging) return;
+    const hit = raycastAt(event);
+    if (hit) placeDecalFromHit(hit);
+    return;
+  }
+  if (state.mode !== 'paintBrush') return;
+  if (!state.painting) {
+    const now = performance.now();
+    if (now - _lastHoverT < 30) return;
+    _lastHoverT = now;
+  }
+  handleBrushMove(event);
+}
+
+function handleBrushMove(event) {
+  const hit = raycastAt(event);
+  updateBrushCursor(hit);
+  if (!state.painting) return;
+  if (!hit) { state.lastPaint = null; return; }
+
+  const mesh = hit.object;
+  // 빠른 드래그 시 끊김 방지: 이전 지점과 보간하며 색칠
+  if (state.lastPaint && state.lastPaint.mesh === mesh) {
+    const from = state.lastPaint.point;
+    const to = hit.point;
+    const dist = from.distanceTo(to);
+    const step = Math.max(1e-9, brushWorldRadius() * 0.35);
+    const n = Math.min(60, Math.floor(dist / step));
+    const tmp = new THREE.Vector3();
+    for (let k = 1; k < n; k++) {
+      tmp.lerpVectors(from, to, k / n);
+      paintDab(mesh, tmp);
+    }
+  }
+  paintDab(mesh, hit.point);
+  state.lastPaint = { mesh, point: hit.point.clone() };
+}
+
+function brushWorldRadius() {
+  return state.modelMaxDim * (state.brush.sizePct / 100);
+}
+
+const _invMat = new THREE.Matrix4();
+const _scaleV = new THREE.Vector3();
+const _posV = new THREE.Vector3();
+const _quatV = new THREE.Quaternion();
+
+const _mirrorPoint = new THREE.Vector3();
+
+// 한 번의 '찍기': 맞은 메시에 칠하고, 대칭이 켜져 있으면
+// 모델 중앙(X축) 반대편 지점에도 같은 브러시를 적용한다.
+function paintDab(hitMesh, worldPoint) {
+  applyBrushAt(hitMesh, worldPoint);
+  if (state.mirror) {
+    _mirrorPoint.copy(worldPoint);
+    _mirrorPoint.x = -_mirrorPoint.x;
+    for (const m of state.editableMeshes) applyBrushAt(m, _mirrorPoint);
+  }
+}
+
+function applyBrushAt(mesh, worldPoint) {
+  const g = mesh.geometry;
+  const pos = g.attributes.position;
+
+  mesh.updateMatrixWorld();
+  _invMat.copy(mesh.matrixWorld).invert();
+  const local = worldPoint.clone().applyMatrix4(_invMat);
+
+  mesh.matrixWorld.decompose(_posV, _quatV, _scaleV);
+  const s = Math.max(_scaleV.x, _scaleV.y, _scaleV.z) || 1;
+  const r = brushWorldRadius() / s;
+  const r2 = r * r;
+
+  // 브러시 구가 메시 경계 상자 근처에도 없으면 즉시 종료 (대칭 모드 최적화)
+  if (!g.boundingBox) g.computeBoundingBox();
+  const bb = g.boundingBox;
+  if (local.x < bb.min.x - r || local.x > bb.max.x + r ||
+      local.y < bb.min.y - r || local.y > bb.max.y + r ||
+      local.z < bb.min.z - r || local.z > bb.max.z + r) return;
+
+  buildVertexGrid(mesh);
+
+  const target = paintColorLinear(state.currentColor);
+  const strength = state.brush.strength / 100;
+  const type = state.brush.type;
+
+  // 공간 그리드로 브러시 반경 근처 정점만 조회 (수십만 정점도 빠르게)
+  const grid = mesh.userData.vgrid;
+  const gInv = 1 / grid.cell;
+  const gm = grid.min;
+  const ix0 = Math.max(0, Math.floor((local.x - r - gm.x) * gInv));
+  const ix1 = Math.min(127, Math.floor((local.x + r - gm.x) * gInv));
+  const iy0 = Math.max(0, Math.floor((local.y - r - gm.y) * gInv));
+  const iy1 = Math.min(127, Math.floor((local.y + r - gm.y) * gInv));
+  const iz0 = Math.max(0, Math.floor((local.z - r - gm.z) * gInv));
+  const iz1 = Math.min(127, Math.floor((local.z + r - gm.z) * gInv));
+
+  // 실제로 칠할 정점을 만났을 때만 기록/페인트 준비 (불필요한 재질 변환 방지)
+  // 주의: recordBefore를 ensurePaintReady보다 먼저 호출해야 undo 시
+  //       원본 텍스처 상태까지 완전하게 복원된다.
+  let col = null, orig = null;
+  let changed = false;
+  let minI = Infinity, maxI = -1;
+  for (let ix = ix0; ix <= ix1; ix++) {
+   for (let iy = iy0; iy <= iy1; iy++) {
+    for (let iz = iz0; iz <= iz1; iz++) {
+     const cellArr = grid.map.get((ix << 14) | (iy << 7) | iz);
+     if (!cellArr) continue;
+     for (let k = 0; k < cellArr.length; k++) {
+      const i = cellArr[k];
+      const dx = pos.getX(i) - local.x;
+      if (dx > r || dx < -r) continue;
+      const dy = pos.getY(i) - local.y;
+      if (dy > r || dy < -r) continue;
+      const dz = pos.getZ(i) - local.z;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 > r2) continue;
+
+      let w;
+      if (type === 'marker' || type === 'eraser') {
+        // 마커/지우개: 반경 안은 균일 강도 → 경계가 선명.
+        // 가장자리 한 겹(정점 간격 폭)만 부드럽게 → 계단 현상 완화 (V8.2)
+        const band = Math.max(1e-9, Math.min(r * 0.5, state.subdivSpacing || r * 0.15));
+        const t = (r - Math.sqrt(d2)) / band;
+        w = strength * (t >= 1 ? 1 : (t <= 0 ? 0 : t));
+      } else if (type === 'soft') {
+        const t = 1 - Math.sqrt(d2) / r;
+        w = strength * t * t;
+      } else { // spray
+        if (Math.random() > strength * 0.08) continue;
+        w = 1;
+      }
+      if (w <= 0) continue;
+      if (w > 1) w = 1;
+
+      if (!col) {
+        recordBefore(mesh);
+        ensurePaintReady(mesh);
+        col = g.attributes.color;
+        orig = mesh.userData.origColors;
+      }
+
+      let tr, tg, tb;
+      if (type === 'eraser' && orig) {
+        tr = orig[i * 3]; tg = orig[i * 3 + 1]; tb = orig[i * 3 + 2];
+      } else {
+        tr = target.r; tg = target.g; tb = target.b;
+      }
+
+      col.setXYZ(i,
+        col.getX(i) * (1 - w) + tr * w,
+        col.getY(i) * (1 - w) + tg * w,
+        col.getZ(i) * (1 - w) + tb * w
+      );
+      if (i < minI) minI = i;
+      if (i > maxI) maxI = i;
+      changed = true;
+     }
+    }
+   }
+  }
+
+  if (changed) {
+    markColorsDirty(mesh, minI, maxI);
+    state.needsRender = true;
+  }
+}
+
+function updateBrushCursor(hit) {
+  const c = state.brushCursor;
+  if (!c) return;
+  if (state.mode !== 'paintBrush' || state.brush.type === 'picker' || !hit) {
+    if (c.visible) { c.visible = false; state.needsRender = true; }
+    if (state.mirrorCursor && state.mirrorCursor.visible) {
+      state.mirrorCursor.visible = false;
+      state.needsRender = true;
+    }
+    return;
+  }
+  c.visible = true;
+  let n;
+  if (hit.face) {
+    n = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
+  } else {
+    n = new THREE.Vector3(0, 1, 0);
+  }
+  c.position.copy(hit.point).addScaledVector(n, state.modelMaxDim * 0.002);
+  c.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+  c.scale.setScalar(brushWorldRadius());
+
+  const mc = state.mirrorCursor;
+  if (mc) {
+    if (state.mirror) {
+      mc.visible = true;
+      mc.position.copy(c.position);
+      mc.position.x = -mc.position.x;
+      const mn = n.clone();
+      mn.x = -mn.x;
+      mc.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), mn);
+      mc.scale.setScalar(brushWorldRadius());
+    } else {
+      mc.visible = false;
+    }
+  }
+  state.needsRender = true;
+}
+
+// ====================== 선택 ======================
+function selectMesh(mesh) {
+  if (state.selectedMesh && state.selectedMesh !== mesh) {
+    restoreEmissive(state.selectedMesh);
+  }
+  state.selectedMesh = mesh;
+  if (mesh) applyEmissive(mesh);
+  updateSelectionInfo();
+  updateMeshListSelection();
+  updateUI();
+  state.needsRender = true;
+}
+
+function applyEmissive(mesh) {
+  const mat = getPrimaryMaterial(mesh);
+  if (!mat) return;
+  state.selectedEmissiveBackup = {
+    mat,
+    emissive: mat.emissive ? mat.emissive.clone() : null,
+    emissiveIntensity: mat.emissiveIntensity,
+  };
+  if (mat.emissive) {
+    mat.emissive = new THREE.Color(0x0078d4);
+    mat.emissiveIntensity = 0.35;
+    mat.needsUpdate = true;
+  }
+}
+
+function restoreEmissive(mesh) {
+  if (!state.selectedEmissiveBackup) return;
+  const { mat, emissive, emissiveIntensity } = state.selectedEmissiveBackup;
+  if (mat && mat.emissive && emissive) {
+    mat.emissive.copy(emissive);
+    mat.emissiveIntensity = emissiveIntensity;
+    mat.needsUpdate = true;
+  }
+  state.selectedEmissiveBackup = null;
+}
+
+function getPrimaryMaterial(mesh) {
+  if (!mesh || !mesh.material) return null;
+  return Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+}
+
+// ====================== 채우기 ======================
+function fillMeshColor(mesh, hex) {
+  const linear = paintColorLinear(hex);
+  if (mesh.userData.paintReady) {
+    // 이미 vertex color 편집 중인 메시는 vertex color를 채움
+    const attr = mesh.geometry.attributes.color;
+    for (let i = 0; i < attr.count; i++) {
+      attr.setXYZ(i, linear.r, linear.g, linear.b);
+    }
+    fullColorUpdate(mesh);
+  } else {
+    // 텍스처(map)를 제거해야 칠한 색이 그대로 불투명하게 보임
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    mats.forEach(m => {
+      if (!m) return;
+      if (m.color) m.color.copy(linear);
+      m.map = null;
+      m.needsUpdate = true;
+    });
+  }
+}
+
+function paintMesh(mesh, hex) {
+  if (!mesh) return;
+  beginStroke();
+  recordBefore(mesh);
+  fillMeshColor(mesh, hex);
+  endStroke();
+  addRecentColor(hex);
+  state.needsRender = true;
+  updateSelectionInfo();
+  updateMeshList();
+}
+
+function paintAll(hex) {
+  if (state.editableMeshes.length === 0) return;
+  beginStroke();
+  state.editableMeshes.forEach(m => {
+    recordBefore(m);
+    fillMeshColor(m, hex);
+  });
+  endStroke();
+  addRecentColor(hex);
+  state.needsRender = true;
+  updateSelectionInfo();
+  updateMeshList();
+}
+
+// ====================== 히스토리 (스트로크 단위, 변경 메시만 기록) ======================
+function captureMeshState(mesh) {
+  const mat = getPrimaryMaterial(mesh);
+  return {
+    matColor: mat && mat.color ? mat.color.getHex() : 0xffffff,
+    vertexColors: mat ? !!mat.vertexColors : false,
+    map: mat ? (mat.map || null) : null,
+    colorArray: mesh.geometry.attributes.color
+      ? new Float32Array(mesh.geometry.attributes.color.array)
+      : null,
+    paintReady: !!mesh.userData.paintReady,
+    origColors: mesh.userData.origColors || null,
+  };
+}
+
+function applyMeshState(mesh, st) {
+  const g = mesh.geometry;
+  if (st.colorArray) {
+    if (!g.attributes.color || g.attributes.color.array.length !== st.colorArray.length) {
+      g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(st.colorArray), 3));
+    } else {
+      g.attributes.color.array.set(st.colorArray);
+      fullColorUpdate(mesh);
+    }
+  } else if (g.attributes.color) {
+    g.deleteAttribute('color');
+  }
+
+  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  mats.forEach(m => {
+    if (!m) return;
+    if (m.color) m.color.setHex(st.matColor);
+    m.vertexColors = st.vertexColors;
+    m.map = st.map;
+    m.needsUpdate = true;
+  });
+
+  mesh.userData.paintReady = st.paintReady;
+  mesh.userData.origColors = st.origColors;
+  state.needsRender = true;
+}
+
+function beginStroke() {
+  state.currentStroke = { before: new Map() };
+}
+
+function recordBefore(mesh) {
+  const s = state.currentStroke;
+  if (!s) return;
+  const idx = state.editableMeshes.indexOf(mesh);
+  if (idx < 0 || s.before.has(idx)) return;
+  s.before.set(idx, captureMeshState(mesh));
+}
+
+// 색칠 스트로크는 변경된 정점만 diff로 저장 → 히스토리 메모리 대폭 절감
+function makeHistoryItem(idx, before, after) {
+  if (before.colorArray && after.colorArray &&
+      before.colorArray.length === after.colorArray.length &&
+      before.matColor === after.matColor &&
+      before.vertexColors === after.vertexColors &&
+      before.map === after.map &&
+      before.paintReady === after.paintReady) {
+    const a = before.colorArray, b = after.colorArray;
+    const idxs = [];
+    for (let i = 0; i < a.length; i += 3) {
+      if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2]) idxs.push(i / 3);
+    }
+    if (idxs.length === 0) return null; // 실제 변화 없음
+    const n = idxs.length;
+    const indices = new Uint32Array(idxs);
+    const from = new Float32Array(n * 3);
+    const to = new Float32Array(n * 3);
+    for (let k = 0; k < n; k++) {
+      const i = idxs[k] * 3;
+      from[k * 3] = a[i]; from[k * 3 + 1] = a[i + 1]; from[k * 3 + 2] = a[i + 2];
+      to[k * 3] = b[i];   to[k * 3 + 1] = b[i + 1];   to[k * 3 + 2] = b[i + 2];
+    }
+    return { idx, diff: { indices, from, to } };
+  }
+  return { idx, before, after };
+}
+
+function applyColorDiff(mesh, diff, useFrom) {
+  const attr = mesh.geometry.attributes.color;
+  if (!attr) return;
+  const src = useFrom ? diff.from : diff.to;
+  for (let k = 0; k < diff.indices.length; k++) {
+    const i = diff.indices[k];
+    attr.setXYZ(i, src[k * 3], src[k * 3 + 1], src[k * 3 + 2]);
+  }
+  fullColorUpdate(mesh);
+}
+
+function endStroke() {
+  const s = state.currentStroke;
+  state.currentStroke = null;
+  if (!s || s.before.size === 0) return;
+
+  const items = [];
+  s.before.forEach((before, idx) => {
+    const item = makeHistoryItem(idx, before, captureMeshState(state.editableMeshes[idx]));
+    if (item) items.push(item);
+  });
+  if (items.length === 0) return; // 아무것도 안 바뀐 스트로크는 기록하지 않음
+
+  const entry = { items, bytes: historyEntryBytes(items) };
+  state.undoStack.push(entry);
+  // 개수 + 메모리(바이트) 두 기준으로 히스토리 제한
+  let totalBytes = 0;
+  for (const en of state.undoStack) totalBytes += en.bytes || 0;
+  while (state.undoStack.length > state.MAX_HISTORY ||
+         (totalBytes > MAX_HISTORY_BYTES && state.undoStack.length > 1)) {
+    const removed = state.undoStack.shift();
+    totalBytes -= removed.bytes || 0;
+  }
+  state.redoStack = [];
+  updateUI();
+  scheduleSave();
+}
+
+// 히스토리 메모리 상한: 정점이 많은 모델에서 전체 채우기를 반복해도
+// 브라우저 메모리가 무한정 늘어나지 않도록 보호한다.
+const MAX_HISTORY_BYTES = 320 * 1024 * 1024;
+
+function historyEntryBytes(items) {
+  let b = 0;
+  for (const it of items) {
+    if (it.diff) {
+      b += it.diff.indices.byteLength + it.diff.from.byteLength + it.diff.to.byteLength;
+    } else {
+      if (it.before && it.before.colorArray) b += it.before.colorArray.byteLength;
+      if (it.after && it.after.colorArray) b += it.after.colorArray.byteLength;
+    }
+  }
+  return b;
+}
+
+function undo() {
+  if (state.undoStack.length === 0) return;
+  const entry = state.undoStack.pop();
+  if (entry.sticker) {
+    // 스티커 추가/삭제 되돌리기
+    const s = entry.sticker;
+    s.recs.forEach(rec => setStickerAttached(rec, s.op === 'add' ? false : true));
+    state.redoStack.push(entry);
+    updateUI();
+    scheduleSave();
+    showToast('실행 취소');
+    return;
+  }
+  entry.items.forEach(it => {
+    const m = state.editableMeshes[it.idx];
+    if (!m) return;
+    if (it.diff) applyColorDiff(m, it.diff, true);
+    else applyMeshState(m, it.before);
+  });
+  state.redoStack.push(entry);
+  updateUI();
+  updateMeshList();
+  updateSelectionInfo();
+  scheduleSave();
+  showToast('실행 취소');
+}
+
+function redo() {
+  if (state.redoStack.length === 0) return;
+  const entry = state.redoStack.pop();
+  if (entry.sticker) {
+    const s = entry.sticker;
+    s.recs.forEach(rec => setStickerAttached(rec, s.op === 'add' ? true : false));
+    state.undoStack.push(entry);
+    updateUI();
+    scheduleSave();
+    showToast('다시 실행');
+    return;
+  }
+  entry.items.forEach(it => {
+    const m = state.editableMeshes[it.idx];
+    if (!m) return;
+    if (it.diff) applyColorDiff(m, it.diff, false);
+    else applyMeshState(m, it.after);
+  });
+  state.undoStack.push(entry);
+  updateUI();
+  updateMeshList();
+  updateSelectionInfo();
+  scheduleSave();
+  showToast('다시 실행');
+}
+
+async function resetToOrigin() {
+  if (!state.root || !state.originSnapshot) return;
+  if (!(await confirmModal('색칠과 스티커를 모두 지우고 처음 모델로 되돌릴까요?\n(이 작업은 실행 취소할 수 없어요)', { okLabel: '처음부터', danger: true }))) return;
+  clearAllStickers();
+  state.editableMeshes.forEach((m, idx) => {
+    applyMeshState(m, state.originSnapshot[idx]);
+  });
+  state.undoStack = [];
+  state.redoStack = [];
+  state.currentStroke = null;
+  updateUI();
+  updateMeshList();
+  updateSelectionInfo();
+  scheduleSave();
+  state.needsRender = true;
+  showToast('처음 모델로 되돌렸어요');
+}
+
+// ====================== 내보내기용 텍스처 베이크 ======================
+// 그림판 3D, Windows 3D 뷰어 등 상당수 프로그램은 glTF의 vertex color(COLOR_0)를
+// 무시하기 때문에, 내보낼 때 vertex color를 UV 기반 텍스처로 구워서(map) 저장해야
+// 다른 프로그램에서도 색칠 결과가 보인다.
+
+// linear(0~255) → sRGB(0~255) 변환 LUT
+const _lin2srgb8 = (() => {
+  const t = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) {
+    const c = i / 255;
+    const s = c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+    t[i] = Math.round(Math.max(0, Math.min(1, s)) * 255);
+  }
+  return t;
+})();
+
+// UV 섬 경계의 검은 틈(seam) 방지를 위한 픽셀 팽창
+function dilatePixels(data, size, passes) {
+  for (let p = 0; p < passes; p++) {
+    const alpha = new Uint8Array(size * size);
+    for (let i = 0; i < size * size; i++) alpha[i] = data[i * 4 + 3];
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const idx = y * size + x;
+        if (alpha[idx] > 0) continue;
+        let src = -1;
+        if (x > 0 && alpha[idx - 1] > 0) src = idx - 1;
+        else if (x < size - 1 && alpha[idx + 1] > 0) src = idx + 1;
+        else if (y > 0 && alpha[idx - size] > 0) src = idx - size;
+        else if (y < size - 1 && alpha[idx + size] > 0) src = idx + size;
+        if (src >= 0) {
+          data[idx * 4]     = data[src * 4];
+          data[idx * 4 + 1] = data[src * 4 + 1];
+          data[idx * 4 + 2] = data[src * 4 + 2];
+          data[idx * 4 + 3] = 255;
+        }
+      }
+    }
+  }
+}
+
+// 메시를 UV 공간에 펼쳐 렌더링하여 vertex color를 텍스처로 굽는다 (GPU 베이크)
+function bakeVertexColorsToTexture(mesh, size = 2048) {
+  const g = mesh.geometry;
+  if (!g.attributes.uv || !g.attributes.color) return null;
+
+  const bakeMat = new THREE.ShaderMaterial({
+    vertexColors: true,
+    side: THREE.DoubleSide,
+    depthTest: false,
+    depthWrite: false,
+    vertexShader: `
+      varying vec3 vColor;
+      void main() {
+        vColor = color;
+        gl_Position = vec4(uv * 2.0 - 1.0, 0.0, 1.0);
+      }`,
+    fragmentShader: `
+      varying vec3 vColor;
+      void main() { gl_FragColor = vec4(vColor, 1.0); }`,
+  });
+
+  const bakeScene = new THREE.Scene();
+  const baker = new THREE.Mesh(g, bakeMat);
+  baker.frustumCulled = false;
+  bakeScene.add(baker);
+  const bakeCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+  const rt = new THREE.WebGLRenderTarget(size, size, {
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+    format: THREE.RGBAFormat,
+  });
+
+  const prevTarget = state.renderer.getRenderTarget();
+  const prevColor = state.renderer.getClearColor(new THREE.Color());
+  const prevAlpha = state.renderer.getClearAlpha();
+
+  state.renderer.setRenderTarget(rt);
+  state.renderer.setClearColor(0x000000, 0);
+  state.renderer.clear();
+  state.renderer.render(bakeScene, bakeCam);
+
+  const pixels = new Uint8Array(size * size * 4);
+  state.renderer.readRenderTargetPixels(rt, 0, 0, size, size, pixels);
+
+  state.renderer.setRenderTarget(prevTarget);
+  state.renderer.setClearColor(prevColor, prevAlpha);
+  rt.dispose();
+  bakeMat.dispose();
+
+  // GL은 아래→위 순서이므로 행을 뒤집고, linear → sRGB 변환
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const imgData = ctx.createImageData(size, size);
+  const out = imgData.data;
+  for (let y = 0; y < size; y++) {
+    const srcRow = (size - 1 - y) * size * 4;
+    const dstRow = y * size * 4;
+    for (let x = 0; x < size; x++) {
+      const s = srcRow + x * 4, d = dstRow + x * 4;
+      out[d]     = _lin2srgb8[pixels[s]];
+      out[d + 1] = _lin2srgb8[pixels[s + 1]];
+      out[d + 2] = _lin2srgb8[pixels[s + 2]];
+      out[d + 3] = pixels[s + 3];
+    }
+  }
+  dilatePixels(out, size, 3);
+  for (let i = 3; i < out.length; i += 4) out[i] = 255;
+  ctx.putImageData(imgData, 0, 0);
+
+  return new THREE.CanvasTexture(canvas);
+}
+
+// 색칠된(paintReady) 메시를 내보내기용 상태로 임시 변환: vertex color 제거 + 베이크 텍스처 적용
+function bakePaintedMeshesForExport(textureSize = 2048) {
+  const backups = [];
+  const tempTextures = [];
+
+  state.editableMeshes.forEach(mesh => {
+    if (!mesh.userData.paintReady) return;
+    const g = mesh.geometry;
+    // UV가 없는 메시(STL 등)는 베이크 불가 → vertex color 그대로 내보냄
+    if (!g.attributes.uv || !g.attributes.color) return;
+
+    // 부품 크기에 맞춰 텍스처 해상도 선택 (작은 부품에 2048은 낭비)
+    const tris = g.attributes.position.count / 3;
+    const size = tris < 4000 ? 512 : (tris < 40000 ? 1024 : textureSize);
+    let tex = null;
+    try {
+      tex = bakeVertexColorsToTexture(mesh, size);
+    } catch (e) {
+      console.warn('텍스처 베이크 실패 (vertex color로 대체):', e);
+    }
+    if (!tex) return;
+    tempTextures.push(tex);
+
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    backups.push({
+      mesh,
+      colorAttr: g.attributes.color,
+      mats: mats.map(m => ({
+        m,
+        map: m ? m.map : null,
+        vc: m ? m.vertexColors : false,
+        colorHex: (m && m.color) ? m.color.getHex() : 0xffffff,
+      })),
+    });
+
+    // COLOR_0이 함께 export되면 텍스처와 이중으로 곱해지므로 임시 제거
+    g.deleteAttribute('color');
+    mats.forEach(m => {
+      if (!m) return;
+      m.map = tex;
+      m.vertexColors = false;
+      if (m.color) m.color.setRGB(1, 1, 1);
+      m.needsUpdate = true;
+    });
+  });
+
+  return {
+    count: backups.length,
+    restore() {
+      backups.forEach(b => {
+        b.mesh.geometry.setAttribute('color', b.colorAttr);
+        b.mats.forEach(s => {
+          if (!s.m) return;
+          s.m.map = s.map;
+          s.m.vertexColors = s.vc;
+          if (s.m.color) s.m.color.setHex(s.colorHex);
+          s.m.needsUpdate = true;
+        });
+      });
+      tempTextures.forEach(t => t.dispose());
+      state.needsRender = true;
+    },
+  };
+}
+
+// ====================== 내보내기용 지오메트리 슬림화 ======================
+// 브러시용으로 세분화된 지오메트리(수십만 삼각형)를 그대로 내보내면 파일이 매우 커진다.
+// 색은 이미 UV 텍스처로 구워졌으므로, 세분화 전 원본 지오메트리로 바꿔 내보내면
+// 같은 모양·같은 색에 파일 크기만 크게 줄어든다. (UV 배치는 세분화 전후 동일)
+function swapExportGeometries() {
+  const swaps = [];
+  state.editableMeshes.forEach(m => {
+    const p = m.userData.raycastProxy;
+    if (!p || !p.geometry) return;
+    // vertex color를 직접 내보내야 하는 메시(UV 없음·베이크 실패)는 세분화본 유지
+    if (m.geometry.attributes && m.geometry.attributes.color) return;
+    swaps.push({ m, g: m.geometry });
+    m.geometry = p.geometry;
+  });
+  return {
+    count: swaps.length,
+    restore() { swaps.forEach(s => { s.m.geometry = s.g; }); },
+  };
+}
+
+// ====================== GLB Export ======================
+function exportGLB() {
+  if (!state.root) return;
+  showBusy('GLB로 저장하는 중… 색칠 결과를 텍스처로 굽고 있습니다.');
+  // 오버레이가 화면에 그려질 시간을 준 뒤 무거운 동기 작업 시작
+  setTimeout(doExportGLB, 60);
+}
+
+function doExportGLB() {
+  const hadSelection = state.selectedMesh;
+  if (hadSelection) restoreEmissive(hadSelection);
+  const cursorWasVisible = state.brushCursor.visible;
+  state.brushCursor.visible = false;
+  const mirrorWasVisible = state.mirrorCursor.visible;
+  state.mirrorCursor.visible = false;
+
+  const finish = () => {
+    if (hadSelection) applyEmissive(hadSelection);
+    state.brushCursor.visible = cursorWasVisible;
+    state.mirrorCursor.visible = mirrorWasVisible;
+    state.needsRender = true;
+  };
+
+  // 레이캐스트 프록시(보이지 않는 내부용 메시)는 내보내기에서 제외
+  const detachedProxies = [];
+  state.editableMeshes.forEach(m => {
+    const p = m.userData.raycastProxy;
+    if (p && p.parent === m) {
+      m.remove(p);
+      detachedProxies.push({ m, p });
+    }
+  });
+
+  // 브러시 색칠 결과(vertex color)를 텍스처로 베이크 (그림판 3D 호환)
+  const baked = bakePaintedMeshesForExport(2048);
+  // 파일 크기 절감: 세분화 전 원본 지오메트리로 내보내기
+  const swapped = swapExportGeometries();
+
+  const exporter = new GLTFExporter();
+  try {
+    // 주의: three.js r128의 GLTFExporter.parse는 (input, onDone, options) 3개 인자.
+    // 에러 콜백 자리는 r137부터 추가되었으므로 options를 3번째에 넣어야 binary가 적용됨.
+    exporter.parse(state.root, (result) => {
+      hideBusy();
+      finish();
+      try {
+        let blob, filename;
+        const baseName = (state.currentFileName || 'model').replace(/\.(glb|gltf|stl)$/i, '');
+        if (result instanceof ArrayBuffer) {
+          blob = new Blob([result], { type: 'model/gltf-binary' });
+          filename = baseName + '_painted.glb';
+        } else {
+          // 만약의 fallback: JSON(glTF)으로 저장
+          blob = new Blob([JSON.stringify(result)], { type: 'model/gltf+json' });
+          filename = baseName + '_painted.gltf';
+        }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        const mb = (blob.size / 1024 / 1024).toFixed(1);
+        showToast(`저장 완료: ${filename} (${mb}MB)`);
+      } catch (e) {
+        console.error(e);
+        showToast('파일 저장 실패: ' + (e.message || e));
+      }
+    }, { binary: true, embedImages: true, maxTextureSize: 4096 });
+  } catch (e) {
+    hideBusy();
+    finish();
+    console.error(e);
+    showToast('GLB 내보내기 실패: ' + (e.message || e));
+  } finally {
+    // r128 GLTFExporter는 scene/이미지 처리를 parse() 안에서 동기적으로 끝내므로
+    // (blob 직렬화만 비동기) parse가 반환된 직후 원래 상태로 되돌려도 안전하다.
+    swapped.restore();   // 반드시 baked.restore()보다 먼저 (color 속성이 올바른 지오메트리에 복원되도록)
+    baked.restore();
+    detachedProxies.forEach(({ m, p }) => m.add(p));
+  }
+}
+
+// ====================== 저장/복원 (localStorage, Uint8 양자화) ======================
+const STORAGE_KEY = 'paint3d_state_v3';
+
+// 정점이 많아져 직렬화 비용이 커졌으므로 저장은 디바운스 처리
+let _saveTimer = null;
+function scheduleSave() {
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(saveStateToStorage, 1200);
+}
+
+function saveStateToStorage() {
+  if (!state.root || !state.currentFileHash) return;
+  try {
+    const entries = state.editableMeshes.map((m, idx) => {
+      const st = captureMeshState(m);
+      let colorsB64 = null, colorsZ = null;
+      if (st.colorArray) {
+        const u8 = new Uint8Array(st.colorArray.length);
+        for (let i = 0; i < st.colorArray.length; i++) {
+          u8[i] = Math.max(0, Math.min(255, Math.round(st.colorArray[i] * 255)));
+        }
+        // 압축 저장: 단색 영역이 많아 보통 10~50배로 줄어든다
+        try {
+          const z = zlibSync(u8, { level: 6 });
+          if (z.length < u8.length * 0.92) colorsZ = u8ToB64(z);
+          else colorsB64 = u8ToB64(u8);
+        } catch (e) {
+          colorsB64 = u8ToB64(u8);
+        }
+      }
+      return {
+        idx,
+        matColor: st.matColor,
+        vertexColors: st.vertexColors,
+        hasMap: !!st.map,
+        colors: colorsB64,
+        colorsZ,
+      };
+    });
+
+    // 새겨진 스티커도 저장 (기본 스티커는 이모지 키만, 사용자 이미지는 dataURL)
+    const stickers = state.stickers.map(s => {
+      const rec = { ...s.data };
+      if (!rec.img && s.canvas) {
+        try {
+          let url = s.canvas.toDataURL('image/webp', 0.9);
+          if (url.indexOf('data:image/webp') !== 0) url = s.canvas.toDataURL('image/png');
+          rec.dataURL = url;
+          rec.flip = false;   // 스냅샷 캔버스에 반전이 이미 반영되어 있음
+        } catch (e) { rec.dataURL = null; }
+      }
+      return rec;
+    });
+
+    const payload = {
+      fileHash: state.currentFileHash,
+      fileName: state.currentFileName,
+      savedAt: Date.now(),
+      currentColor: state.currentColor,
+      entries,
+      stickers,
+    };
+    const LIMIT = 4.5 * 1024 * 1024;
+    let str = JSON.stringify(payload);
+    if (str.length > LIMIT) {
+      // 1차 절감: 용량이 큰 사용자 이미지 스티커 제외 (이모지 스티커는 유지)
+      payload.stickers = stickers.filter(s => !s.dataURL);
+      str = JSON.stringify(payload);
+    }
+    if (str.length > LIMIT) {
+      // 2차 절감: vertex color 데이터 제외하고 저장
+      const lite = {
+        ...payload,
+        entries: entries.map(e => ({ ...e, colors: null, colorsZ: null })),
+        lite: true,
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(lite));
+    } else {
+      localStorage.setItem(STORAGE_KEY, str);
+    }
+    updateStorageInfo();
+  } catch (e) {
+    console.warn('저장 실패', e);
+  }
+}
+
+function loadStateFromStorage() {
+  try {
+    const s = localStorage.getItem(STORAGE_KEY);
+    if (!s) return null;
+    return JSON.parse(s);
+  } catch (e) {
+    return null;
+  }
+}
+
+async function checkStoredStateForCurrentFile() {
+  const stored = loadStateFromStorage();
+  const btn = document.getElementById('btn-restore');
+  if (!stored) {
+    if (btn) btn.disabled = true;
+    updateStorageInfo();
+    return;
+  }
+  const match = stored.fileHash === state.currentFileHash;
+  if (btn) btn.disabled = !match;
+  updateStorageInfo();
+  // 같은 모델의 자동 저장 기록(색칠 또는 스티커)이 있으면 이어하기를 제안
+  const hasContent = (stored.entries && stored.entries.some(e => e.colors || e.colorsZ)) ||
+                     (stored.stickers && stored.stickers.length > 0);
+  if (match && !state.skipResumePrompt && !stored.lite && hasContent) {
+    const ok = await confirmModal(`이 모델의 지난 작업이 저장되어 있어요. (${formatWhen(stored.savedAt)})\n이어서 할까요?`, { okLabel: '이어하기' });
+    if (ok) restoreStoredState(true);
+  }
+}
+
+// ====================== 프로그램 HTML 다운로드 ======================
+// (버그 수정: 이전 버전에서는 이 리스너가 checkStoredStateForCurrentFile 내부에
+//  있어 모델을 열기 전에는 동작하지 않고, 파일을 열 때마다 중복 바인딩되었음)
+function downloadSelfHtml() {
+  const clone = document.documentElement.cloneNode(true);
+  // 실행 중 변경된 동적 요소들을 초기 상태로 복원
+  const reset = (sel, fn) => { const el = clone.querySelector(sel); if (el) fn(el); };
+  reset('#swatches', el => { el.innerHTML = ''; });
+  reset('#recent-swatches', el => { el.innerHTML = ''; });
+  reset('#sample-grid', el => { el.innerHTML = ''; });
+  reset('#mesh-list', el => { el.innerHTML = '<div style="padding:10px; color:var(--text-dim); font-size:12px; text-align:center;">모델을 열면 부품이 보여요</div>'; });
+  reset('#viewport', el => { el.removeAttribute('style'); el.removeAttribute('width'); el.removeAttribute('height'); });
+  ['btn-save','btn-export','btn-usdz','btn-shot','btn-undo','btn-redo','btn-reset',
+   'btn-decal-apply','btn-decal-cancel','btn-apply-color','btn-restore'].forEach(id => {
+    reset('#' + id, el => el.setAttribute('disabled', ''));
+  });
+  clone.querySelectorAll('.tool-btn, .brush-btn, #fill-scope .seg-btn').forEach(b => b.classList.remove('active'));
+  reset('.tool-btn[data-tool="view"]', el => el.classList.add('active'));
+  reset('.brush-btn[data-brush="marker"]', el => el.classList.add('active'));
+  reset('#fill-scope .seg-btn[data-scope="mesh"]', el => el.classList.add('active'));
+  clone.querySelectorAll('.tool-panel').forEach(p => p.classList.remove('active'));
+  reset('#opt-view', el => el.classList.add('active'));
+  reset('#tool-panel-title', el => { el.textContent = '👀 보기'; });
+  reset('#toast', el => { el.classList.remove('show'); el.textContent = ''; });
+  reset('#busy-overlay', el => el.classList.remove('show'));
+  reset('#boot-error', el => { el.style.display = 'none'; });
+  reset('#start-screen', el => el.removeAttribute('hidden'));
+  reset('#start-close', el => el.setAttribute('hidden', ''));
+  reset('#start-resume', el => { el.setAttribute('hidden', ''); el.innerHTML = ''; });
+  reset('#guide-modal', el => el.setAttribute('hidden', ''));
+  reset('#confirm-modal', el => el.setAttribute('hidden', ''));
+  reset('#save-menu', el => el.setAttribute('hidden', ''));
+  reset('#right', el => el.classList.remove('open'));
+  reset('#decal-thumb', el => el.removeAttribute('src'));
+  reset('#decal-thumb-wrap', el => el.classList.remove('has-image'));
+  reset('#storage-info', el => { el.textContent = '저장된 작업이 없습니다. 색칠하면 자동으로 저장돼요.'; });
+  reset('#overlay-mode', el => { el.textContent = '도구: 보기'; });
+  reset('#overlay-model', el => { el.textContent = ''; });
+  reset('#viewport-hint', el => { el.textContent = '드래그: 돌리기 · 휠/두 손가락: 확대 · 우클릭 드래그: 이동'; });
+  ['#sel-name', '#sel-type', '#sel-verts', '#sel-color'].forEach(sel => {
+    reset(sel, el => { el.textContent = '—'; });
+  });
+  reset('#brush-size-val', el => { el.textContent = '3%'; });
+  reset('#brush-strength-val', el => { el.textContent = '100%'; });
+  reset('#decal-size-val', el => { el.textContent = '25%'; });
+  reset('#decal-rot-val', el => { el.textContent = '0°'; });
+  reset('#decal-opacity-val', el => { el.textContent = '100%'; });
+  reset('#sticker-lib', el => { el.innerHTML = ''; });
+  reset('#sticker-count', el => { el.textContent = '0'; });
+  reset('#btn-sticker-undo-last', el => el.setAttribute('disabled', ''));
+  reset('#btn-sticker-clear', el => el.setAttribute('disabled', ''));
+  // 지우개 슬롯으로 옮겨졌을 수 있는 공용 슬라이더를 붓 패널로 복귀
+  const common = clone.querySelector('#brush-common');
+  const brushPanel = clone.querySelector('#opt-brush');
+  if (common && brushPanel) brushPanel.insertBefore(common, brushPanel.querySelector('.switch-row'));
+
+  const html = '<!DOCTYPE html>\n' + clone.outerHTML;
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = '그림판3D_V8.3.html';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  showToast('프로그램을 HTML 파일로 저장했어요. 친구에게 공유해도 좋아요!', 3000);
+}
+
+async function restoreStoredState(skipConfirm) {
+  const stored = loadStateFromStorage();
+  if (!stored || stored.fileHash !== state.currentFileHash) {
+    showToast('지금 연 모델과 일치하는 저장 기록이 없어요.');
+    return;
+  }
+  if (skipConfirm !== true &&
+      !(await confirmModal('저장된 작업을 불러오면 지금 화면의 내용은 사라져요.\n계속할까요?', { okLabel: '불러오기' }))) return;
+
+  stored.entries.forEach(e => {
+    const m = state.editableMeshes[e.idx];
+    if (!m) return;
+
+    if ((e.colors || e.colorsZ) && e.vertexColors) {
+      // vertex color 복원: 먼저 paintReady 상태를 만들고 저장된 색으로 덮어씀
+      ensurePaintReady(m);
+      const attr = m.geometry.attributes.color;
+      let u8 = null;
+      try {
+        u8 = e.colorsZ ? unzlibSync(b64ToU8(e.colorsZ)) : b64ToU8(e.colors);
+      } catch (err) {
+        console.warn('저장 색 데이터 해제 실패:', err);
+      }
+      if (u8 && u8.length === attr.array.length) {
+        for (let i = 0; i < u8.length; i++) attr.array[i] = u8[i] / 255;
+        fullColorUpdate(m);
+      }
+    } else {
+      // material 색만 복원
+      const mats = Array.isArray(m.material) ? m.material : [m.material];
+      mats.forEach(mat => {
+        if (!mat) return;
+        if (mat.color) mat.color.setHex(e.matColor);
+        mat.vertexColors = false;
+        mat.map = e.hasMap ? (m.userData.origMap || null) : null;
+        mat.needsUpdate = true;
+      });
+      if (m.geometry.attributes.color) m.geometry.deleteAttribute('color');
+      m.userData.paintReady = false;
+      m.userData.origColors = null;
+    }
+  });
+
+  // 스티커 복원: 현재 스티커를 지우고 저장된 스티커를 다시 새김
+  clearAllStickers();
+  if (stored.stickers && stored.stickers.length) {
+    rebuildStickersFromData(stored.stickers);
+  }
+
+  state.undoStack = [];
+  state.redoStack = [];
+  if (stored.currentColor) setCurrentColor(stored.currentColor);
+  updateUI();
+  updateMeshList();
+  updateSelectionInfo();
+  state.needsRender = true;
+  showToast('지난 작업을 불러왔어요! 이어서 칠해보세요 🖌️');
+}
+
+async function clearStorage() {
+  if (!(await confirmModal('자동 저장된 작업 기록을 삭제할까요?', { okLabel: '삭제', danger: true }))) return;
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem('paint3d_state_v1');
+  localStorage.removeItem('paint3d_state_v2');
+  updateStorageInfo();
+  document.getElementById('btn-restore').disabled = true;
+  showToast('자동 저장 기록을 삭제했어요');
+}
+
+function updateStorageInfo() {
+  const stored = loadStateFromStorage();
+  const el = document.getElementById('storage-info');
+  if (!stored) {
+    el.textContent = '저장된 작업이 없습니다. 색칠하면 자동으로 저장돼요.';
+    updateStartResume();
+    return;
+  }
+  const date = new Date(stored.savedAt);
+  const pad = n => String(n).padStart(2, '0');
+  const when = `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const liteNote = stored.lite ? ' (간단히 저장됨)' : '';
+  el.innerHTML =
+    `<div><span style="color:var(--text-dim);">모델:</span> ${escapeHtml(stored.fileName || '-')}</div>` +
+    `<div><span style="color:var(--text-dim);">저장 시각:</span> ${when}${liteNote}</div>` +
+    (stored.fileHash === state.currentFileHash
+      ? `<div style="color:var(--success); margin-top:4px;">✓ 지금 연 모델의 기록이에요</div>`
+      : `<div style="color:var(--text-dim); margin-top:4px;">지금 연 모델의 기록이 아니에요</div>`);
+  updateStartResume();
+}
+
+// ====================== UI 업데이트 ======================
+function setMode(mode) {
+  // 색칠 중이었다면 스트로크 마무리
+  if (state.painting) {
+    state.painting = false;
+    state.lastPaint = null;
+    endStroke();
+  }
+  state.mode = mode;
+  const canvas = document.getElementById('viewport');
+  canvas.style.cursor = (mode === 'view') ? 'default' : 'crosshair';
+  if (mode !== 'paintBrush') {
+    state.brushCursor.visible = false;
+    if (state.mirrorCursor) state.mirrorCursor.visible = false;
+    state.needsRender = true;
+  }
+  // 데칼 미리보기는 스티커 모드에서만 표시
+  if (state.decal.group) {
+    const show = (mode === 'decal' && state.decal.placed);
+    state.decal.group.visible = show;
+    if (state.decal.projGroup) state.decal.projGroup.visible = show;
+    state.needsRender = true;
+  }
+  applyControlScheme();
+  updateOverlay();
+  updateHint();
+}
+
+// 핵심: 브러시 모드에서는 좌클릭 드래그가 '색칠'이 되어야 하므로
+// OrbitControls의 좌클릭 회전을 끄고, 회전은 우클릭으로 옮김.
+// 터치(태블릿)에서는 한 손가락 = 색칠, 두 손가락 = 확대/이동.
+function applyControlScheme() {
+  const c = state.controls;
+  if (state.mode === 'paintBrush' || state.mode === 'decal') {
+    c.mouseButtons = { LEFT: -1, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE };
+    c.touches = { ONE: -1, TWO: THREE.TOUCH.DOLLY_PAN };
+  } else {
+    c.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+    c.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+  }
+}
+
+function updateHint() {
+  const el = document.getElementById('viewport-hint');
+  const t = state.tool;
+  if (t === 'brush') {
+    el.textContent = '드래그해서 색칠! · 우클릭 드래그: 화면 돌리기 · 터치는 한 손가락 색칠, 두 손가락 확대/이동';
+  } else if (t === 'eraser') {
+    el.textContent = '문지르면 원래 색으로 돌아와요 · 우클릭 드래그: 화면 돌리기';
+  } else if (t === 'picker') {
+    el.textContent = '모델이나 스티커를 클릭하면 그 색을 가져와요';
+  } else if (t === 'fill') {
+    el.textContent = '칠하고 싶은 곳을 클릭!';
+  } else if (t === 'sticker') {
+    el.textContent = '클릭·드래그로 위치 잡기 → Q/E 회전 → ‘모델에 새기기’ 버튼!';
+  } else {
+    el.textContent = '드래그: 돌리기 · 휠/두 손가락: 확대 · 우클릭 드래그: 이동 · 부품 클릭: 선택';
+  }
+}
+
+function setBrushType(type) {
+  state.brush.type = type;
+  if (type === 'marker' || type === 'soft' || type === 'spray') {
+    state.brush.paintType = type;   // 붓 도구가 기억하는 종류
+  }
+  document.querySelectorAll('.brush-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.brush === type);
+  });
+}
+
+function setCurrentColor(hex) {
+  state.currentColor = hex;
+  document.getElementById('color-picker').value = hex;
+  document.getElementById('color-hex').value = hex;
+}
+
+function updateOverlay() {
+  const toolNames = {
+    view: '보기', brush: '붓', fill: '채우기',
+    sticker: '스티커', eraser: '지우개', picker: '스포이드',
+  };
+  document.getElementById('overlay-mode').textContent = '도구: ' + (toolNames[state.tool] || '보기');
+  document.getElementById('overlay-model').textContent =
+    state.root ? ' · ' + (state.currentFileName || '모델') : '';
+}
+
+function updateSelectionInfo() {
+  const m = state.selectedMesh;
+  const name = document.getElementById('sel-name');
+  const type = document.getElementById('sel-type');
+  const verts = document.getElementById('sel-verts');
+  const col = document.getElementById('sel-color');
+  const btn = document.getElementById('btn-apply-color');
+
+  if (!m) {
+    name.textContent = '—';
+    type.textContent = '—';
+    verts.textContent = '—';
+    col.textContent = '—';
+    btn.disabled = true;
+    return;
+  }
+  const mat = getPrimaryMaterial(m);
+  name.textContent = m.name || '(이름 없는 부품)';
+  type.textContent = m.geometry?.type || 'Mesh';
+  verts.textContent = (m.geometry?.attributes?.position?.count || 0).toLocaleString();
+  if (m.userData.paintReady) {
+    col.textContent = '직접 칠한 색 🎨';
+  } else if (mat && mat.color) {
+    const hex = '#' + mat.color.getHexString();
+    col.innerHTML = `<span style="display:inline-block;width:12px;height:12px;background:${hex};border:1px solid #999;border-radius:2px;vertical-align:middle;"></span> ${hex}`;
+  } else {
+    col.textContent = '—';
+  }
+  btn.disabled = false;
+}
+
+function rebuildMeshList() {
+  const list = document.getElementById('mesh-list');
+  list.innerHTML = '';
+  if (state.editableMeshes.length === 0) {
+    list.innerHTML = '<div style="padding:10px; color:var(--text-dim); font-size:12px; text-align:center;">모델을 열면 부품이 보여요</div>';
+    return;
+  }
+  state.editableMeshes.forEach((m, idx) => {
+    const mat = getPrimaryMaterial(m);
+    const hex = mat && mat.color ? '#' + mat.color.getHexString() : '#cccccc';
+    const div = document.createElement('div');
+    div.className = 'mesh-item';
+    div.dataset.idx = idx;
+    div.innerHTML = `
+      <span class="dot" style="background:${hex};"></span>
+      <span class="name" title="${escapeHtml(m.name || '(이름 없는 부품)')}">${escapeHtml(m.name || '(이름 없는 부품)')}</span>
+    `;
+    div.addEventListener('click', () => selectMesh(m));
+    list.appendChild(div);
+  });
+  updateMeshListSelection();
+}
+
+function updateMeshList() {
+  const list = document.getElementById('mesh-list');
+  const items = list.querySelectorAll('.mesh-item');
+  items.forEach(item => {
+    const idx = parseInt(item.dataset.idx, 10);
+    const m = state.editableMeshes[idx];
+    if (!m) return;
+    const mat = getPrimaryMaterial(m);
+    const hex = mat && mat.color ? '#' + mat.color.getHexString() : '#cccccc';
+    const dot = item.querySelector('.dot');
+    if (dot) dot.style.background = m.userData.paintReady ? 'linear-gradient(45deg,#f66,#fc6,#6f6,#69f)' : hex;
+  });
+}
+
+function updateMeshListSelection() {
+  const list = document.getElementById('mesh-list');
+  list.querySelectorAll('.mesh-item').forEach(item => {
+    const idx = parseInt(item.dataset.idx, 10);
+    item.classList.toggle('selected', state.editableMeshes[idx] === state.selectedMesh);
+  });
+}
+
+function updateUI() {
+  const en = (id, on) => { const el = document.getElementById(id); if (el) el.disabled = !on; };
+  en('btn-undo', state.undoStack.length > 0);
+  en('btn-redo', state.redoStack.length > 0);
+  en('btn-save', state.root);
+  en('btn-export', state.root);
+  en('btn-usdz', state.root);
+  en('btn-shot', state.root);
+  en('btn-reset', state.root);
+}
+
+// ====================== PNG 스크린샷 ======================
+function saveScreenshot() {
+  if (!state.root) return;
+  const helpers = [state.grid, state.axis, state.brushCursor, state.mirrorCursor,
+                   state.decal.group, state.decal.projGroup].filter(Boolean);
+  const prevVis = helpers.map(h => h.visible);
+  helpers.forEach(h => { h.visible = false; });
+  const sel = state.selectedMesh;
+  if (sel) restoreEmissive(sel);
+
+  state.renderer.render(state.scene, state.camera);
+
+  const done = (blob) => {
+    helpers.forEach((h, i) => { h.visible = prevVis[i]; });
+    if (sel) applyEmissive(sel);
+    state.needsRender = true;
+    if (!blob) { showToast('스크린샷 생성에 실패했습니다.'); return; }
+    const baseName = (state.currentFileName || 'model').replace(/\.(glb|gltf|stl)$/i, '');
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = baseName + '_screenshot.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast('PNG 스크린샷을 저장했습니다.');
+  };
+  state.renderer.domElement.toBlob(done, 'image/png');
+}
+
+// ====================== 빠른 시점 ======================
+function fitDistance() {
+  const fov = state.camera.fov * (Math.PI / 180);
+  return Math.abs(state.modelMaxDim / Math.sin(fov / 2)) * 0.8;
+}
+
+function setQuickView(which) {
+  if (!state.root) return;
+  const d = fitDistance();
+  const dirs = {
+    front: [0, 0.12, 1],
+    side:  [1, 0.12, 0.001],
+    top:   [0.001, 1, 0.001],
+  };
+  const v = new THREE.Vector3().fromArray(dirs[which]).normalize().multiplyScalar(d);
+  state.camera.position.copy(v);
+  state.controls.target.set(0, 0, 0);
+  state.controls.update();
+  state.needsRender = true;
+}
+
+// ====================== 최근 사용한 색 ======================
+const RECENT_COLORS_KEY = 'paint3d_recent_colors_v1';
+let recentColors = [];
+try {
+  const arr = JSON.parse(localStorage.getItem(RECENT_COLORS_KEY) || '[]');
+  if (Array.isArray(arr)) recentColors = arr.filter(c => /^#[0-9a-f]{6}$/i.test(c)).slice(0, 8);
+} catch (e) { /* 손상된 데이터는 무시 */ }
+
+function addRecentColor(hex) {
+  hex = hex.toLowerCase();
+  const i = recentColors.indexOf(hex);
+  if (i === 0) return;
+  if (i > 0) recentColors.splice(i, 1);
+  recentColors.unshift(hex);
+  if (recentColors.length > 8) recentColors.length = 8;
+  try { localStorage.setItem(RECENT_COLORS_KEY, JSON.stringify(recentColors)); } catch (e) {}
+  renderRecentColors();
+}
+
+function renderRecentColors() {
+  const el = document.getElementById('recent-swatches');
+  el.innerHTML = '';
+  recentColors.forEach(hex => {
+    const sw = document.createElement('div');
+    sw.className = 'swatch';
+    sw.style.background = hex;
+    sw.title = hex;
+    sw.addEventListener('click', () => setCurrentColor(hex));
+    el.appendChild(sw);
+  });
+}
+
+// ====================== V8: 도구·시작 화면·샘플·USDZ ======================
+// V8 추가 상태
+state.tool = 'view';                 // view | brush | fill | sticker | eraser | picker
+state.fillScope = 'mesh';            // mesh(부품만) | all(전체)
+state.brush.paintType = 'marker';    // 붓 도구가 기억하는 마지막 붓 종류
+state.stickers = [];                 // 새겨진 텍스처 스티커 목록
+state.stickerRoot = null;            // 스티커 메시들이 담기는 그룹 (root의 자식)
+state.decal.imgKey = null;           // 'emoji:X' = 기본 스티커, null = 사용자 이미지
+state.subdivSpacing = 0;             // 세분화로 달성된 정점 간격 (경계 다듬기용)
+
+// ---------- 커스텀 확인 모달 (confirm 대체) ----------
+function confirmModal(message, opts = {}) {
+  return new Promise(resolve => {
+    const bd = document.getElementById('confirm-modal');
+    const ok = document.getElementById('confirm-ok');
+    const cancel = document.getElementById('confirm-cancel');
+    document.getElementById('confirm-text').textContent = message;
+    ok.textContent = opts.okLabel || '확인';
+    ok.className = 'btn ' + (opts.danger ? 'danger' : 'primary');
+    bd.hidden = false;
+    const done = (v) => {
+      bd.hidden = true;
+      ok.removeEventListener('click', onOk);
+      cancel.removeEventListener('click', onCancel);
+      resolve(v);
+    };
+    const onOk = () => done(true);
+    const onCancel = () => done(false);
+    ok.addEventListener('click', onOk);
+    cancel.addEventListener('click', onCancel);
+  });
+}
+
+// ---------- 삼각형 아틀라스 UV ----------
+// UV가 없는 지오메트리(STL·일부 샘플)에 삼각형마다 겹치지 않는 UV 영역을 배정.
+// 화면 색칠은 vertex color라 UV가 필요 없지만, GLB/USDZ로 내보낼 때
+// 색을 텍스처로 구우려면 겹치지 않는 UV가 꼭 필요하다.
+const ATLAS_UV_MAX_TRIS = 200000;
+function ensureAtlasUV(geometry) {
+  const pos = geometry.attributes.position;
+  if (!pos) return false;
+  const triCount = Math.floor(pos.count / 3);
+  if (!triCount || triCount > ATLAS_UV_MAX_TRIS) return false;
+  const dim = Math.ceil(Math.sqrt(Math.ceil(triCount / 2)));
+  const cell = 1 / dim;
+  const m = cell * 0.14;   // 셀 안쪽 여백 (번짐 방지)
+  const uv = new Float32Array(pos.count * 2);
+  for (let t = 0; t < triCount; t++) {
+    const p = t >> 1;   // 셀 하나에 삼각형 2개 (대각선 분할)
+    const cx = (p % dim) * cell;
+    const cy = Math.floor(p / dim) * cell;
+    const o = t * 6;
+    if ((t & 1) === 0) {
+      uv[o]     = cx + m;        uv[o + 1] = cy + m;
+      uv[o + 2] = cx + cell - m; uv[o + 3] = cy + m;
+      uv[o + 4] = cx + m;        uv[o + 5] = cy + cell - m;
+    } else {
+      uv[o]     = cx + cell - m; uv[o + 1] = cy + cell - m;
+      uv[o + 2] = cx + m;        uv[o + 3] = cy + cell - m;
+      uv[o + 4] = cx + cell - m; uv[o + 5] = cy + m;
+    }
+  }
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return true;
+}
+
+// ---------- 내장 샘플 모델 ----------
+const SAMPLES = {
+  ball:    { emoji: '⚽', label: '공' },
+  cube:    { emoji: '🎲', label: '큐브' },
+  donut:   { emoji: '🍩', label: '도넛' },
+  star:    { emoji: '⭐', label: '별' },
+  heart:   { emoji: '❤️', label: '하트' },
+  snowman: { emoji: '⛄', label: '눈사람' },
+};
+
+function sampleMesh(name, geo, hex, atlas) {
+  let g = geo;
+  g.clearGroups();   // 재질이 하나뿐이므로 그룹 제거 → 브러시용 세분화 대상이 됨
+  if (atlas) {
+    if (g.index) g = g.toNonIndexed();
+    ensureAtlasUV(g);   // 겹치는 UV(큐브·원뿔·돌출 도형·작은 구)를 아틀라스로 교체
+  }
+  const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({
+    color: hex, roughness: 0.85, metalness: 0,
+  }));
+  mesh.name = name;
+  return mesh;
+}
+
+function starGeometry() {
+  const shape = new THREE.Shape();
+  const R = 1, r = 0.47, n = 5;
+  for (let i = 0; i < n * 2; i++) {
+    const rad = (i % 2 === 0) ? R : r;
+    const a = (i / (n * 2)) * Math.PI * 2 + Math.PI / 2;
+    const x = Math.cos(a) * rad, y = Math.sin(a) * rad;
+    if (i === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
+  }
+  shape.closePath();
+  const g = new THREE.ExtrudeGeometry(shape, {
+    depth: 0.42, steps: 1, bevelEnabled: true,
+    bevelThickness: 0.09, bevelSize: 0.09, bevelSegments: 2,
+  });
+  g.translate(0, 0, -0.21);
+  return g;
+}
+
+function heartGeometry() {
+  const s = new THREE.Shape();
+  s.moveTo(0.5, 0.5);
+  s.bezierCurveTo(0.5, 0.5, 0.4, 0, 0, 0);
+  s.bezierCurveTo(-0.6, 0, -0.6, 0.7, -0.6, 0.7);
+  s.bezierCurveTo(-0.6, 1.1, -0.35, 1.54, 0.5, 1.9);
+  s.bezierCurveTo(1.35, 1.54, 1.6, 1.1, 1.6, 0.7);
+  s.bezierCurveTo(1.6, 0.7, 1.6, 0, 1, 0);
+  s.bezierCurveTo(0.7, 0, 0.5, 0.5, 0.5, 0.5);
+  const g = new THREE.ExtrudeGeometry(s, {
+    depth: 0.5, steps: 1, bevelEnabled: true, curveSegments: 10,
+    bevelThickness: 0.12, bevelSize: 0.12, bevelSegments: 2,
+  });
+  g.rotateZ(Math.PI);          // 도형이 뒤집혀 그려지므로 바로 세움
+  g.translate(0.5, 0.95, -0.25);
+  return g;
+}
+
+function buildSample(key) {
+  const grp = new THREE.Group();
+  if (key === 'ball') {
+    grp.add(sampleMesh('공', new THREE.SphereGeometry(1.1, 48, 32), 0xf1f3f5));
+  } else if (key === 'cube') {
+    grp.add(sampleMesh('큐브', new THREE.BoxGeometry(1.6, 1.6, 1.6, 5, 5, 5), 0xe9ecef, true));
+  } else if (key === 'donut') {
+    grp.add(sampleMesh('도넛', new THREE.TorusGeometry(1, 0.45, 28, 56), 0xffd8a8));
+  } else if (key === 'star') {
+    grp.add(sampleMesh('별', starGeometry(), 0xffe066, true));
+  } else if (key === 'heart') {
+    grp.add(sampleMesh('하트', heartGeometry(), 0xffa8a8, true));
+  } else if (key === 'snowman') {
+    const body = sampleMesh('몸통', new THREE.SphereGeometry(1, 40, 28), 0xffffff);
+    const head = sampleMesh('머리', new THREE.SphereGeometry(0.66, 32, 22), 0xffffff);
+    head.position.y = 1.28;
+    const eyeL = sampleMesh('왼쪽 눈', new THREE.SphereGeometry(0.07, 12, 8), 0x343a40, true);
+    eyeL.position.set(-0.22, 1.45, 0.58);
+    const eyeR = sampleMesh('오른쪽 눈', new THREE.SphereGeometry(0.07, 12, 8), 0x343a40, true);
+    eyeR.position.set(0.22, 1.45, 0.58);
+    const nose = sampleMesh('코', new THREE.ConeGeometry(0.09, 0.5, 18), 0xff922b, true);
+    nose.rotation.x = Math.PI / 2;
+    nose.position.set(0, 1.3, 0.85);
+    const btnData = [[0, 0.35, 0.93], [0, 0.02, 0.99], [0, -0.32, 0.94]];
+    const btns = btnData.map((p, i) => {
+      const b = sampleMesh('단추 ' + (i + 1), new THREE.SphereGeometry(0.08, 12, 8), 0x495057, true);
+      b.position.set(p[0], p[1], p[2]);
+      return b;
+    });
+    const brim = sampleMesh('모자챙', new THREE.CylinderGeometry(0.52, 0.52, 0.06, 24), 0x343a40, true);
+    brim.position.y = 1.8;
+    const hat = sampleMesh('모자', new THREE.CylinderGeometry(0.33, 0.35, 0.5, 24), 0x343a40, true);
+    hat.position.y = 2.06;
+    grp.add(body, head, eyeL, eyeR, nose, ...btns, brim, hat);
+  }
+  return grp;
+}
+
+async function loadSample(key) {
+  const def = SAMPLES[key];
+  if (!def) return;
+  if (state.undoStack.length > 0) {
+    const ok = await confirmModal('아직 저장하지 않은 작업이 있어요.\n새 모델을 열면 지금 작업은 사라져요. 계속할까요?', { okLabel: '새로 열기', danger: true });
+    if (!ok) return;
+  }
+  showBusy('샘플 모델을 준비하는 중…');
+  try {
+    await new Promise(r => setTimeout(r, 30));
+    clearCurrentModel();
+    const root = buildSample(key);
+    root.name = def.label;
+    prepareLoadedRoot(root);
+    state.currentFileName = def.label + '.glb';
+    state.currentFileHash = 'sample:' + key + ':v1';
+    afterModelLoaded();
+    checkStoredStateForCurrentFile();
+  } catch (e) {
+    console.error(e);
+    showToast('샘플을 만들지 못했어요: ' + (e.message || e));
+  } finally {
+    hideBusy();
+  }
+}
+
+// ---------- 시작 화면 ----------
+function buildSampleGrid() {
+  const grid = document.getElementById('sample-grid');
+  grid.innerHTML = '';
+  Object.keys(SAMPLES).forEach(key => {
+    const d = SAMPLES[key];
+    const b = document.createElement('button');
+    b.className = 'sample-btn';
+    b.innerHTML = `<span class="se">${d.emoji}</span><span class="sl">${d.label}</span>`;
+    b.addEventListener('click', () => loadSample(key));
+    grid.appendChild(b);
+  });
+}
+
+function formatWhen(ts) {
+  const d = new Date(ts);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function updateStartResume() {
+  const el = document.getElementById('start-resume');
+  if (!el) return;
+  const stored = loadStateFromStorage();
+  if (!stored) { el.hidden = true; el.innerHTML = ''; return; }
+  const isSample = /^sample:/.test(stored.fileHash || '');
+  const when = formatWhen(stored.savedAt);
+  if (isSample) {
+    const key = (stored.fileHash || '').split(':')[1];
+    el.innerHTML = `<span style="font-size:22px;">⏪</span><span><b>지난 작품 이어하기</b><br>${escapeHtml(stored.fileName || '')} · ${when}</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'btn primary';
+    btn.textContent = '이어하기';
+    btn.addEventListener('click', async () => {
+      state.skipResumePrompt = true;   // 자동 이어하기 제안 중복 방지
+      await loadSample(key);
+      state.skipResumePrompt = false;
+      if (state.currentFileHash === (stored.fileHash || '')) restoreStoredState(true);
+    });
+    el.appendChild(btn);
+    el.hidden = false;
+  } else {
+    el.innerHTML = `<span style="font-size:22px;">💾</span><span><b>${escapeHtml(stored.fileName || '')}</b>의 작업 기록이 있어요 (${when})<br>같은 파일을 다시 열면 이어서 할 수 있어요.</span>`;
+    el.hidden = false;
+  }
+}
+
+function showStartScreen() {
+  updateStartResume();
+  document.getElementById('start-close').hidden = !state.root;
+  document.getElementById('start-screen').hidden = false;
+}
+function hideStartScreen() {
+  document.getElementById('start-screen').hidden = true;
+}
+
+// ---------- 사용법 안내 ----------
+const GUIDE_KEY = 'paint3d_guide_seen_v8';
+function showGuide() { document.getElementById('guide-modal').hidden = false; }
+function hideGuide() { document.getElementById('guide-modal').hidden = true; }
+function maybeShowGuideOnce() {
+  try {
+    if (localStorage.getItem(GUIDE_KEY)) return;
+    localStorage.setItem(GUIDE_KEY, '1');
+  } catch (e) {}
+  showGuide();
+}
+
+// ---------- 도구 시스템 ----------
+// 내부 모드(paintBrush/paintMesh/paintAll/decal/view)와 브러시 종류를
+// 학생에게는 '도구 6개'로 단순하게 보여준다.
+const TOOL_LABEL = {
+  view: '👀 보기', brush: '🖌️ 붓', fill: '🪣 채우기',
+  sticker: '🖼️ 스티커', eraser: '🧽 지우개', picker: '💧 스포이드',
+};
+
+function setTool(tool) {
+  if (!TOOL_LABEL[tool]) return;
+  state.tool = tool;
+  if (tool === 'brush') { state.brush.type = state.brush.paintType; setMode('paintBrush'); }
+  else if (tool === 'eraser') { state.brush.type = 'eraser'; setMode('paintBrush'); }
+  else if (tool === 'picker') { state.brush.type = 'picker'; setMode('paintBrush'); }
+  else if (tool === 'fill') { setMode(state.fillScope === 'all' ? 'paintAll' : 'paintMesh'); }
+  else if (tool === 'sticker') { setMode('decal'); }
+  else { setMode('view'); }
+
+  document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === tool));
+  const title = document.getElementById('tool-panel-title');
+  if (title) title.textContent = TOOL_LABEL[tool];
+  document.querySelectorAll('.tool-panel').forEach(p => p.classList.remove('active'));
+  const panel = document.getElementById('opt-' + tool);
+  if (panel) panel.classList.add('active');
+
+  // 붓·지우개가 크기/진하기 슬라이더를 공유 (DOM 이동)
+  const common = document.getElementById('brush-common');
+  if (common) {
+    if (tool === 'eraser') document.getElementById('eraser-slot').appendChild(common);
+    else {
+      const brushPanel = document.getElementById('opt-brush');
+      brushPanel.insertBefore(common, brushPanel.querySelector('.switch-row'));
+    }
+  }
+}
+
+// ---------- 저장 메뉴 ----------
+function toggleSaveMenu(force) {
+  const m = document.getElementById('save-menu');
+  const show = (force !== undefined) ? force : m.hidden;
+  m.hidden = !show;
+}
+
+// ---------- USDZ(AR) 내보내기 ----------
+// 아이폰·아이패드의 AR 보기(Quick Look)용. 색칠 결과(vertex color)를
+// GLB와 같은 방식으로 텍스처로 구운 뒤 USDZExporter로 압축한다.
+function exportUSDZ() {
+  if (!state.root) return;
+  showBusy('AR 파일(USDZ)로 저장하는 중… 색칠 결과를 텍스처로 굽고 있어요.');
+  setTimeout(doExportUSDZ, 60);
+}
+
+async function doExportUSDZ() {
+  const hadSelection = state.selectedMesh;
+  if (hadSelection) restoreEmissive(hadSelection);
+  const cursorWasVisible = state.brushCursor.visible;
+  state.brushCursor.visible = false;
+  const mirrorWasVisible = state.mirrorCursor.visible;
+  state.mirrorCursor.visible = false;
+
+  // 내부용 레이캐스트 프록시는 내보내기에서 제외
+  const detachedProxies = [];
+  state.editableMeshes.forEach(m => {
+    const p = m.userData.raycastProxy;
+    if (p && p.parent === m) { m.remove(p); detachedProxies.push({ m, p }); }
+  });
+
+  // 색칠 결과를 텍스처로 베이크 (UV 있는 메시)
+  const baked = bakePaintedMeshesForExport(2048);
+  // USDZ는 텍스트 기반이라 삼각형 수에 매우 민감 → 원본 지오메트리로 슬림화
+  const swapped = swapExportGeometries();
+
+  // USDZ는 vertex color를 지원하지 않으므로,
+  // 베이크되지 못한 메시는 평균 색으로라도 표현한다.
+  const matPatches = [];
+  state.editableMeshes.forEach(m => {
+    const g = m.geometry;
+    const mats = Array.isArray(m.material) ? m.material : [m.material];
+    if (g.attributes && g.attributes.color && mats.some(mt => mt && mt.vertexColors)) {
+      const col = g.attributes.color;
+      let r = 0, gg = 0, b = 0;
+      const n = col.count;
+      for (let i = 0; i < n; i++) { r += col.getX(i); gg += col.getY(i); b += col.getZ(i); }
+      mats.forEach(mt => {
+        if (!mt) return;
+        matPatches.push({ mat: mt, hex: mt.color ? mt.color.getHex() : 0xffffff, vc: mt.vertexColors });
+        mt.vertexColors = false;
+        if (mt.color && n) mt.color.setRGB(r / n, gg / n, b / n);
+        mt.needsUpdate = true;
+      });
+    }
+  });
+
+  // 멀티 재질 메시는 USDZExporter가 지원하지 않아 첫 재질로 임시 통일
+  const multiMatPatches = [];
+  state.editableMeshes.forEach(m => {
+    if (Array.isArray(m.material)) {
+      multiMatPatches.push({ mesh: m, mats: m.material });
+      m.material = m.material[0];
+    }
+  });
+
+  // AR 실물 크기: 가장 긴 쪽을 30cm로
+  const arScale = 0.3 / (state.modelMaxDim || 1);
+  const prevScale = state.root.scale.clone();
+  state.root.scale.multiplyScalar(arScale);
+  state.root.updateMatrixWorld(true);
+
+  try {
+    const exporter = new USDZExporter();
+    const data = await exporter.parse(state.root);
+    const baseName = (state.currentFileName || 'model').replace(/\.(glb|gltf|stl)$/i, '');
+    const blob = new Blob([data], { type: 'model/vnd.usdz+zip' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = baseName + '_AR.usdz';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    const mb = (blob.size / 1024 / 1024).toFixed(1);
+    showToast(`AR 파일 저장 완료! (${mb}MB) 아이폰·아이패드에서 열면 실물 크기(약 30cm)로 보여요.`, 4200);
+  } catch (e) {
+    console.error(e);
+    showToast('USDZ 저장 실패: ' + (e.message || e));
+  } finally {
+    state.root.scale.copy(prevScale);
+    state.root.updateMatrixWorld(true);
+    swapped.restore();   // baked.restore()보다 먼저
+    multiMatPatches.forEach(p => { p.mesh.material = p.mats; });
+    matPatches.forEach(p => {
+      p.mat.vertexColors = p.vc;
+      if (p.mat.color) p.mat.color.setHex(p.hex);
+      p.mat.needsUpdate = true;
+    });
+    baked.restore();
+    detachedProxies.forEach(({ m, p }) => m.add(p));
+    if (hadSelection) applyEmissive(hadSelection);
+    state.brushCursor.visible = cursorWasVisible;
+    state.mirrorCursor.visible = mirrorWasVisible;
+    state.needsRender = true;
+    hideBusy();
+  }
+}
+
+// ---------- V8 이벤트 바인딩 ----------
+function bindV8Events() {
+  // 도구 레일
+  document.querySelectorAll('.tool-btn').forEach(btn => {
+    btn.addEventListener('click', () => setTool(btn.dataset.tool));
+  });
+
+  // 채우기 범위
+  document.querySelectorAll('#fill-scope .seg-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      state.fillScope = b.dataset.scope;
+      document.querySelectorAll('#fill-scope .seg-btn').forEach(x => x.classList.toggle('active', x === b));
+      document.getElementById('fill-tip').textContent = (state.fillScope === 'all')
+        ? '모델을 클릭하면 전체가 지금 색으로 한 번에 칠해져요.'
+        : '모델에서 부품을 클릭하면 그 부품 전체가 지금 색으로 칠해져요.';
+      if (state.tool === 'fill') setMode(state.fillScope === 'all' ? 'paintAll' : 'paintMesh');
+    });
+  });
+
+  // 시작 화면
+  document.getElementById('start-open').addEventListener('click', () => {
+    document.getElementById('file-input').click();
+  });
+  document.getElementById('start-close').addEventListener('click', hideStartScreen);
+
+  // 저장 메뉴
+  document.getElementById('btn-save').addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleSaveMenu();
+  });
+  document.getElementById('save-menu').addEventListener('click', (e) => {
+    if (e.target.closest('.menu-item')) toggleSaveMenu(false);
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (!e.target.closest('.save-wrap')) toggleSaveMenu(false);
+  });
+  document.getElementById('btn-usdz').addEventListener('click', exportUSDZ);
+
+  // 도움말
+  document.getElementById('btn-help').addEventListener('click', showGuide);
+  document.getElementById('guide-close').addEventListener('click', hideGuide);
+  document.getElementById('guide-modal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) hideGuide();
+  });
+
+  // 모바일: 우측 패널 서랍
+  const right = document.getElementById('right');
+  const btnPanel = document.getElementById('btn-panel');
+  btnPanel.addEventListener('click', () => {
+    right.classList.add('open');
+    btnPanel.style.visibility = 'hidden';
+  });
+  document.getElementById('panel-close').addEventListener('click', () => {
+    right.classList.remove('open');
+    btnPanel.style.visibility = '';
+  });
+
+  // 새긴 스티커 관리
+  document.getElementById('btn-sticker-undo-last').addEventListener('click', () => {
+    const rec = state.stickers[state.stickers.length - 1];
+    if (!rec) return;
+    setStickerAttached(rec, false);
+    pushStickerHistory('remove', [rec]);
+    scheduleSave();
+    showToast('마지막 스티커를 지웠어요 (Ctrl+Z로 되살리기)');
+  });
+  document.getElementById('btn-sticker-clear').addEventListener('click', async () => {
+    if (state.stickers.length === 0) return;
+    if (!(await confirmModal('새긴 스티커 ' + state.stickers.length + '개를 모두 지울까요?', { okLabel: '모두 지우기', danger: true }))) return;
+    const recs = state.stickers.slice();
+    recs.forEach(rec => setStickerAttached(rec, false));
+    pushStickerHistory('remove', recs);
+    scheduleSave();
+    showToast('스티커를 모두 지웠어요 (Ctrl+Z로 되살리기)');
+  });
+
+  // Esc: 메뉴/모달 닫기
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      toggleSaveMenu(false);
+      hideGuide();
+    }
+  });
+}
+
+// ====================== 이벤트 바인딩 ======================
+function bindEvents() {
+  // 열기: 시작 화면(내 파일 + 샘플)을 보여줌
+  document.getElementById('btn-open').addEventListener('click', showStartScreen);
+  document.getElementById('file-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) loadFile(file);
+    e.target.value = '';
+  });
+
+  // 드래그 앤 드롭
+  const center = document.getElementById('center');
+  const dropOverlay = document.getElementById('drop-overlay');
+  let dragCounter = 0;
+  center.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragCounter++;
+    dropOverlay.classList.add('active');
+  });
+  center.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter <= 0) {
+      dragCounter = 0;
+      dropOverlay.classList.remove('active');
+    }
+  });
+  center.addEventListener('dragover', (e) => { e.preventDefault(); });
+  center.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    dropOverlay.classList.remove('active');
+    const file = e.dataTransfer.files[0];
+    if (file) loadFile(file);
+  });
+
+  // 상단 버튼
+  document.getElementById('btn-export').addEventListener('click', exportGLB);
+  document.getElementById('btn-undo').addEventListener('click', undo);
+  document.getElementById('btn-redo').addEventListener('click', redo);
+  document.getElementById('btn-reset').addEventListener('click', resetToOrigin);
+  document.getElementById('btn-reframe').addEventListener('click', () => {
+    if (state.root) centerAndFrame(state.root);
+    state.needsRender = true;
+  });
+  document.getElementById('btn-shot').addEventListener('click', saveScreenshot);
+  document.getElementById('btn-download-html').addEventListener('click', downloadSelfHtml);
+  document.getElementById('btn-view-front').addEventListener('click', () => setQuickView('front'));
+  document.getElementById('btn-view-side').addEventListener('click', () => setQuickView('side'));
+  document.getElementById('btn-view-top').addEventListener('click', () => setQuickView('top'));
+  document.getElementById('chk-autorotate').addEventListener('change', (e) => {
+    state.controls.autoRotate = e.target.checked;
+    state.controls.autoRotateSpeed = 2.0;
+    state.needsRender = true;
+  });
+  document.getElementById('chk-mirror').addEventListener('change', (e) => {
+    state.mirror = e.target.checked;
+    if (state.mirrorCursor && !state.mirror) state.mirrorCursor.visible = false;
+    state.needsRender = true;
+  });
+  document.getElementById('bg-select').addEventListener('change', (e) => {
+    state.scene.background = new THREE.Color(e.target.value);
+    state.needsRender = true;
+  });
+
+  // 브러시 종류
+  document.querySelectorAll('.brush-btn').forEach(btn => {
+    btn.addEventListener('click', () => setBrushType(btn.dataset.brush));
+  });
+
+  // 브러시 슬라이더
+  const sizeSlider = document.getElementById('brush-size');
+  const sizeVal = document.getElementById('brush-size-val');
+  sizeSlider.addEventListener('input', (e) => {
+    state.brush.sizePct = parseFloat(e.target.value);
+    sizeVal.textContent = state.brush.sizePct + '%';
+  });
+  const strSlider = document.getElementById('brush-strength');
+  const strVal = document.getElementById('brush-strength-val');
+  strSlider.addEventListener('input', (e) => {
+    state.brush.strength = parseInt(e.target.value, 10);
+    strVal.textContent = state.brush.strength + '%';
+  });
+
+  // 색상
+  const colorPicker = document.getElementById('color-picker');
+  const colorHex = document.getElementById('color-hex');
+  colorPicker.addEventListener('input', (e) => setCurrentColor(e.target.value));
+  colorHex.addEventListener('change', (e) => {
+    let v = e.target.value.trim().toLowerCase();
+    if (/^[0-9a-f]{6}$/.test(v)) v = '#' + v;
+    if (/^#?[0-9a-f]{3}$/.test(v)) {
+      const t = v.replace('#', '');
+      v = '#' + t[0] + t[0] + t[1] + t[1] + t[2] + t[2];
+    }
+    if (!/^#[0-9a-f]{6}$/.test(v)) {
+      e.target.value = state.currentColor;
+      showToast('색상은 #RRGGBB 형식으로 입력하세요.');
+      return;
+    }
+    setCurrentColor(v);
+  });
+
+  // 색상 팔레트
+  const swatches = [
+    '#ff6b6b','#ffa94d','#ffd43b','#a9e34b','#51cf66','#20c997','#22b8cf','#4dabf7',
+    '#748ffc','#9775fa','#da77f2','#f783ac','#ffffff','#cccccc','#666666','#000000',
+  ];
+  const swatchEl = document.getElementById('swatches');
+  swatches.forEach(hex => {
+    const s = document.createElement('div');
+    s.className = 'swatch';
+    s.style.background = hex;
+    s.title = hex;
+    s.addEventListener('click', () => setCurrentColor(hex));
+    swatchEl.appendChild(s);
+  });
+
+  // 선택 메시에 색 적용
+  document.getElementById('btn-apply-color').addEventListener('click', () => {
+    if (state.selectedMesh) paintMesh(state.selectedMesh, state.currentColor);
+  });
+
+  // 보기 옵션
+  document.getElementById('chk-grid').addEventListener('change', (e) => {
+    if (state.grid) state.grid.visible = e.target.checked;
+    state.needsRender = true;
+  });
+  document.getElementById('chk-axis').addEventListener('change', (e) => {
+    if (state.axis) state.axis.visible = e.target.checked;
+    state.needsRender = true;
+  });
+
+  // ---------- 이미지 스티커 ----------
+  document.getElementById('btn-decal-paste').addEventListener('click', pasteDecalFromClipboardAPI);
+  document.getElementById('btn-decal-file').addEventListener('click', () => {
+    document.getElementById('decal-file-input').click();
+  });
+  document.getElementById('decal-file-input').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const img = await blobToImage(file);
+      setDecalImage(img, file.name);
+    } catch (err) {
+      showToast('이미지 파일을 열 수 없습니다.');
+    }
+  });
+
+  // Ctrl+V: 클립보드 이미지 붙여넣기 (문서 어디서든)
+  document.addEventListener('paste', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type && item.type.startsWith('image/')) {
+        e.preventDefault();
+        const blob = item.getAsFile();
+        if (blob) blobToImage(blob).then(img => setDecalImage(img, '클립보드 이미지'))
+          .catch(() => showToast('이미지를 읽을 수 없습니다.'));
+        return;
+      }
+    }
+  });
+
+  const dSize = document.getElementById('decal-size');
+  const dSizeVal = document.getElementById('decal-size-val');
+  dSize.addEventListener('input', (e) => {
+    state.decal.sizePct = parseInt(e.target.value, 10);
+    dSizeVal.textContent = state.decal.sizePct + '%';
+    updateDecalTransform();
+  });
+  const dRot = document.getElementById('decal-rot');
+  const dRotVal = document.getElementById('decal-rot-val');
+  dRot.addEventListener('input', (e) => {
+    state.decal.rotation = parseInt(e.target.value, 10);
+    dRotVal.textContent = state.decal.rotation + '°';
+    updateDecalTransform();
+  });
+  const dOpa = document.getElementById('decal-opacity');
+  const dOpaVal = document.getElementById('decal-opacity-val');
+  dOpa.addEventListener('input', (e) => {
+    state.decal.opacity = parseInt(e.target.value, 10);
+    dOpaVal.textContent = state.decal.opacity + '%';
+    updateDecalTransform();
+  });
+  document.getElementById('decal-flip').addEventListener('change', (e) => {
+    state.decal.flipX = e.target.checked;
+    updateDecalFlipTexture();
+  });
+  document.getElementById('btn-decal-apply').addEventListener('click', applyDecalStamp);
+  document.getElementById('btn-decal-cancel').addEventListener('click', () => cancelDecal(false));
+
+  // 저장/복원
+  document.getElementById('btn-restore').addEventListener('click', () => restoreStoredState(false));
+  document.getElementById('btn-clear-storage').addEventListener('click', clearStorage);
+
+  // 캔버스 포인터 이벤트
+  const canvas = state.renderer.domElement;
+  canvas.addEventListener('pointerdown', onPointerDown);
+  canvas.addEventListener('pointermove', onPointerMove);
+  canvas.addEventListener('pointerup', onPointerUp);
+  canvas.addEventListener('pointercancel', onPointerUp);
+  canvas.addEventListener('pointerleave', (e) => {
+    if (!state.painting) {
+      state.brushCursor.visible = false;
+      if (state.mirrorCursor) state.mirrorCursor.visible = false;
+      state.needsRender = true;
+    }
+  });
+
+  // 단축키
+  window.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+    const ctrl = e.ctrlKey || e.metaKey;
+    if (ctrl && e.key.toLowerCase() === 'o') {
+      e.preventDefault();
+      document.getElementById('file-input').click();
+    } else if (ctrl && !e.shiftKey && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      undo();
+    } else if ((ctrl && e.key.toLowerCase() === 'y') || (ctrl && e.shiftKey && e.key.toLowerCase() === 'z')) {
+      e.preventDefault();
+      redo();
+    } else if (ctrl && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      exportGLB();
+    } else if (ctrl && e.key.toLowerCase() === 'v') {
+      // 브라우저 paste 이벤트가 이미지 처리를 담당 (여기서는 막지 않음)
+    } else if (e.key === '1') setTool('view');
+    else if (e.key === '2') setTool('brush');
+    else if (e.key === '3') setTool('fill');
+    else if (e.key === '4') setTool('sticker');
+    else if (e.key === '5') setTool('eraser');
+    else if (e.key === '6') setTool('picker');
+    else if (state.mode === 'decal' && (e.key === 'q' || e.key === 'Q' || e.key === 'e' || e.key === 'E')) {
+      const delta = (e.key === 'q' || e.key === 'Q') ? -15 : 15;
+      const slider = document.getElementById('decal-rot');
+      let v = (parseInt(slider.value, 10) + delta + 360) % 360;
+      slider.value = v;
+      slider.dispatchEvent(new Event('input'));
+    } else if (state.mode === 'decal' && e.key === 'Enter') {
+      e.preventDefault();
+      applyDecalStamp();
+    } else if (e.key === '[') {
+      const s = document.getElementById('brush-size');
+      s.value = Math.max(1, parseFloat(s.value) - 0.5);
+      s.dispatchEvent(new Event('input'));
+    } else if (e.key === ']') {
+      const s = document.getElementById('brush-size');
+      s.value = Math.min(15, parseFloat(s.value) + 0.5);
+      s.dispatchEvent(new Event('input'));
+    } else if (e.key === 'm' || e.key === 'M') {
+      const c = document.getElementById('chk-mirror');
+      c.checked = !c.checked;
+      c.dispatchEvent(new Event('change'));
+      showToast('양쪽 똑같이 칠하기: ' + (c.checked ? '켜짐' : '꺼짐'));
+    } else if (e.key === 'Escape') {
+      if (state.mode === 'decal' && state.decal.placed) cancelDecal(false);
+      else selectMesh(null);
+    }
+  });
+
+  window.addEventListener('beforeunload', (e) => {
+    saveStateToStorage();
+    if (state.undoStack.length > 0) {
+      e.preventDefault();
+      e.returnValue = '';   // 브라우저 표준 '나가기 확인' 대화상자 표시
+    }
+  });
+}
+
+// ====================== 시작 ======================
+initThree();
+bindEvents();
+bindV8Events();
+buildSampleGrid();
+buildStickerLibrary();
+updateStickerUI();
+setCurrentColor('#ff6b6b');
+setTool('view');
+updateStorageInfo();
+renderRecentColors();
+updateUI();
+showStartScreen();
+
+// 부팅 완료 표시 (CDN 로드 실패 감지용) + 콘솔 디버깅용 핸들
+window.__paint3dBooted = true;
+window.__paint3d = { state, loadSample, loadFile, setTool, exportGLB, exportUSDZ, saveScreenshot, restoreStoredState, setDecalImage, applyDecalStamp, renderEmojiSticker };
+</script>
+<script>
+// three.js CDN 모듈 로드가 실패하면 (오프라인 등) 안내 화면 표시
+setTimeout(function () {
+  if (!window.__paint3dBooted) {
+    var el = document.getElementById('boot-error');
+    if (el) el.style.display = 'flex';
+  }
+}, 7000);
+</script>
+<!-- V5 (2026-07-05): 마커 경계 선명화(자동 세분화), 공간 그리드 가속, 스포이드, diff 기반 undo -->
+<!-- V6 (2026-07-07): 이미지 스티커(데칼) — 클립보드/파일 이미지를 모델 표면에 투영해 정점 색으로 새김.
+     위치(클릭·드래그), 크기, 회전(Q/E), 투명도, 좌우반전 지원. undo/자동저장/GLB 내보내기와 호환. -->
+<!-- V6.1 (2026-07-07): 스티커 미리보기가 곡면을 따라 감싸지도록 개선 (DecalGeometry 투영 클리핑).
+     새기기 결과와 미리보기 모양이 일치. 드래그 중 40ms 스로틀로 부드럽게 갱신. -->
+<!-- V8.3 (2026-08-10): 붓 크기 범위 절반으로 축소.
+     기본 6% → 3%, 최대 30% → 15% (사용자 피드백: 전체적으로 너무 두꺼움).
+     0.5% 단위 미세 조절 지원, 단축키 [ ] 도 0.5% 보폭. 최소 1%는 유지
+     (정점 간격 0.8%보다 가늘어지면 획이 끊기므로). 지우개도 동일 적용.
+     만든이: 인천 구월중학교 조창현 -->
+<!-- V8.2 (2026-08-09): 붓·지우개 경계 화질 향상 + 스티커 스포이드.
+     [개선] 색칠 정점 간격을 모델 크기의 1.2% → 0.8%로 좁힘 (삼각형 예산 32만 → 45만,
+       최대 분할 깊이 7 — 저사양 PC 메모리 여유 감안). 마커·지우개 경계에 정점 간격 폭
+       한 겹의 안티앨리어싱을 넣어 계단 현상 완화 — 경계 선명도 체감 2배가량.
+       정점이 늘어난 만큼 자동 저장은 zlib 압축(fflate, three r147 동봉 모듈)으로 전환:
+       단색 영역이 많아 보통 10~50배로 줄어 localStorage 한도(약 5MB) 안에 안전하게 저장.
+       이전 버전(비압축) 저장 데이터도 그대로 읽어 복원 가능.
+       브러시 가속 그리드를 모델 로딩 중에 미리 구축해 첫 획 끊김 제거.
+     [신기능] 스포이드가 새긴 스티커의 텍스처 색도 추출 (스티커가 더 가까우면 스티커 픽셀
+       색을 읽고, 투명한 부분이면 아래 모델 색으로). 도구 안내 문구 갱신.
+     만든이: 인천 구월중학교 조창현 -->
+<!-- V8.1 (2026-08-09): 스티커 품질 대폭 향상 + 기본 스티커 라이브러리.
+     [개선] 스티커 새기기를 정점 색 굽기 → 텍스처 데칼 방식으로 전환. 새겨도 원본 이미지
+       해상도(최대 1024px) 그대로 선명함. 미리보기와 결과가 완전히 일치. GLB/USDZ 내보내기에
+       텍스처 메시로 포함되고, z-파이팅 방지를 위해 표면에서 미세하게 띄워 저장됨.
+     [신기능] 기본 스티커 라이브러리 15종(이모지 고해상도 렌더, 파일 크기 증가 0),
+       새긴 스티커 관리(마지막 지우기·모두 지우기), 스티커 실행 취소/다시 실행 지원,
+       자동 저장에 스티커 포함(기본 스티커는 키만, 사용자 이미지는 WebP/PNG로 압축 저장).
+     [변경] '처음부터'는 색칠+스티커를 모두 지우는 완전 초기화로 변경(실행 취소 불가 안내).
+     만든이: 인천 구월중학교 조창현 -->
+<!-- V8.0 (2026-08-09): 초보자 친화 UI 전면 개편판.
+     [UI] 시작 화면(내 파일 열기 + 내장 샘플 6종: 공·큐브·도넛·별·하트·눈사람),
+       모드+브러시 2단계를 도구 6개(보기·붓·채우기·스티커·지우개·스포이드)로 통합,
+       선택한 도구의 옵션만 표시하는 컨텍스트 패널, 고급 정보는 '자세히'로 접힘,
+       큰 버튼·큰 팔레트·스위치 등 터치 친화(44px+) 모던 디자인, 태블릿 반응형(하단 도구바 + 옵션 서랍),
+       첫 실행 4단계 사용법 안내 + ❓도움말, 저장 메뉴 통합(GLB/USDZ/PNG), 쉬운 용어(메시→부품).
+     [신기능] USDZ(AR) 내보내기 — 아이폰·아이패드 AR 보기용, 실물 크기 약 30cm 자동 조정.
+       색칠 결과는 GLB와 동일하게 텍스처로 베이크되어 내보내짐.
+       삼각형 아틀라스 UV 자동 생성 — STL 등 UV 없는 모델도 GLB/USDZ에 색이 텍스처로 저장됨.
+       샘플 모델 자동 저장·이어하기, 시작 화면에서 지난 작품 바로 이어하기.
+     [기타] confirm 대화상자를 앱 내 확인 모달로 교체, 브라우저 내장 3D 엔진은 r128 유지(색칠 엔진 무변경),
+       USDZExporter만 three r147 모듈 사용(호환 확인됨).
+     만든이: 인천 구월중학교 조창현 -->
+<!-- V7.0 (2026-07-12): 판매 품질 개선판.
+     [버그 수정] HTML 다운로드 리스너가 함수 내부에 잘못 삽입되어 모델 로드 전 미동작·중복 바인딩되던 문제,
+       첫 스트로크 undo 시 원본 텍스처가 복원되지 않던 기록 순서 문제(recordBefore를 ensurePaintReady보다 먼저).
+     [성능] 브러시 색 변경을 프레임당 1회 변경 구간만 GPU 업로드(updateRange), 브러시 경계상자 프리체크,
+       히스토리 메모리 상한(320MB) 도입.
+     [신기능] 좌우 대칭 칠하기(M, 미러 커서 표시), PNG 스크린샷, 최근 사용 색 8칸(자동 기억),
+       빠른 시점(정면/측면/윗면), 자동 회전(턴테이블), 배경색 선택, HEX 입력 유연화(3자리·# 생략).
+     [안정성] WebGL 컨텍스트 유실 안내, CDN 로드 실패 부팅 안내 화면, 로딩/저장 스피너 오버레이,
+       외부 리소스 참조 .gltf 사전 감지, 멀티터치 핀치 시 스트로크 자동 종료, 미저장 편집 이탈 경고,
+       모니터 배율 변경 대응(setPixelRatio), 반응형 레이아웃(≤1100px/≤880px).
+     만든이: 인천 구월중학교 조창현 -->
+</body>
+</html>
