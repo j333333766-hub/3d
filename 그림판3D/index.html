@@ -879,6 +879,10 @@
           <span class="mi">📱</span>
           <span><b>AR 파일 (USDZ)</b><span>아이폰·아이패드에서 실물처럼 보여요</span></span>
         </button>
+        <button class="menu-item" id="btn-arweb" disabled>
+          <span class="mi">🌐</span>
+          <span><b>AR 웹뷰어 (ZIP)</b><span>GLB·USDZ·뷰어를 한 번에 — 웹에 올리면 AR 주소 완성</span></span>
+        </button>
         <button class="menu-item" id="btn-shot" disabled>
           <span class="mi">📷</span>
           <span><b>사진 (PNG)</b><span>지금 보이는 화면을 이미지로</span></span>
@@ -1201,7 +1205,7 @@
 
 // ====================== 앱 정보 / 원본 보관 ======================
 // 버전을 올릴 때는 이 상수 하나만 바꾸면 제목·파일 이름에 모두 반영된다.
-const APP_VERSION = '9.0';
+const APP_VERSION = '9.1';
 const APP_NAME = '그림판 3D V' + APP_VERSION;
 
 // 아직 아무것도 바뀌지 않은 부팅 직후의 문서 전체를 문자열로 보관해 둔다.
@@ -3887,6 +3891,7 @@ function updateUI() {
   en('btn-save', state.root);
   en('btn-export', state.root);
   en('btn-usdz', state.root);
+  en('btn-arweb', state.root);
   en('btn-shot', state.root);
   en('btn-reset', state.root);
 }
@@ -4281,6 +4286,8 @@ function toggleSaveMenu(force) {
 // GLB와 같은 방식으로 텍스처로 구운 뒤 USDZExporter로 압축한다.
 function exportUSDZ() { return performV9Export('usdz'); }
 function doExportUSDZ() { return performV9Export('usdz'); }
+// V9.1: GLB + USDZ + model-viewer index.html 을 ZIP 하나로(웹에 올리면 AR 웹뷰어)
+function exportARWeb() { return performV9Export('arweb'); }
 
 // ---------- V8 이벤트 바인딩 ----------
 function bindV8Events() {
@@ -4319,6 +4326,7 @@ function bindV8Events() {
     if (!e.target.closest('.save-wrap')) toggleSaveMenu(false);
   });
   document.getElementById('btn-usdz').addEventListener('click', exportUSDZ);
+  document.getElementById('btn-arweb').addEventListener('click', exportARWeb);
 
   // 도움말
   document.getElementById('btn-help').addEventListener('click', showGuide);
@@ -5751,13 +5759,178 @@ function initV9Interface() {
   new ResizeObserver(onResize).observe(document.getElementById('center'));
 }
 
+// ---------- V9.1 AR 웹뷰어 내보내기 ----------
+// 압축 없는(STORE) ZIP. GLB·USDZ는 이미 압축돼 있어 따로 줄이지 않는다. 파일 이름은 UTF-8(플래그 0x0800).
+const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(bytes) { let c = 0xFFFFFFFF; for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function makeZip(entries) {
+  const enc = new TextEncoder(), parts = [], central = [];
+  const now = new Date();
+  const time = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+  const date = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+  let offset = 0;
+  for (const [name, data] of entries) {
+    const nb = enc.encode(name), crc = crc32(data);
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true);
+    h.setUint16(10, time, true); h.setUint16(12, date, true); h.setUint32(14, crc, true);
+    h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, nb.length, true);
+    parts.push(new Uint8Array(h.buffer), nb, data);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true);
+    c.setUint16(12, time, true); c.setUint16(14, date, true); c.setUint32(16, crc, true);
+    c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, nb.length, true);
+    c.setUint32(42, offset, true);
+    central.push(new Uint8Array(c.buffer), nb);
+    offset += 30 + nb.length + data.length;
+  }
+  const cdSize = central.reduce((n, p) => n + p.length, 0);
+  const e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, entries.length, true); e.setUint16(10, entries.length, true);
+  e.setUint32(12, cdSize, true); e.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, new Uint8Array(e.buffer)], {type:'application/zip'});
+}
+const escHtml = (t) => String(t).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+// '3D 웹뷰어(AR)' 폴더의 index.html 그대로 + 머리글·제목에 작품 이름
+function arViewerHtml(title) {
+  const t = escHtml(title || '3D 모델');
+  return `<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>${t} · 3D 뷰어 (AR)</title>
+
+  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"><\/script>
+
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+      background: radial-gradient(circle at 50% 30%, #2a2a35 0%, #15151c 70%);
+      color: #f0f0f5;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+    }
+    header { padding: 14px 18px; text-align: center; font-size: 15px; font-weight: 600; letter-spacing: .3px; flex: 0 0 auto; }
+    .stage { flex: 1 1 auto; position: relative; }
+    model-viewer { width: 100%; height: 100%; --poster-color: transparent; background: transparent; }
+
+    /* AR 버튼 */
+    .ar-button {
+      position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%);
+      background: #ffffff; color: #15151c; border: none; border-radius: 999px;
+      padding: 13px 26px; font-size: 15px; font-weight: 700; box-shadow: 0 6px 20px rgba(0,0,0,.35);
+      cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+    }
+    .ar-button:active { transform: translateX(-50%) scale(.97); }
+    .ar-button svg { width: 18px; height: 18px; }
+    /* AR 미지원 기기에서도 버튼을 항상 표시 (model-viewer 기본 숨김 무시) */
+    button[slot="ar-button"] { display: inline-flex !important; }
+
+    /* 로딩 표시 */
+    .progress-bar {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 180px; height: 5px; background: rgba(255,255,255,.15); border-radius: 4px; overflow: hidden;
+    }
+    .progress-bar .fill { height: 100%; width: 0%; background: #fff; transition: width .2s; }
+    .progress-bar[hidden] { display: none; }
+
+    .hint { flex: 0 0 auto; text-align: center; font-size: 12px; color: #9a9aa8; padding: 8px 18px 14px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <header>${t}</header>
+
+  <div class="stage">
+    <model-viewer
+      id="viewer"
+      src="model.glb"
+      alt="${t}"
+      camera-controls
+      touch-action="pan-y"
+      auto-rotate
+      auto-rotate-delay="0"
+      shadow-intensity="1"
+      exposure="1"
+      environment-image="neutral"
+      ar
+      ar-modes="scene-viewer quick-look"
+      ar-scale="auto"
+      ar-placement="floor"
+      ios-src="model.usdz">
+
+      <button class="ar-button" slot="ar-button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2 3 7v10l9 5 9-5V7z"/>
+          <path d="M3 7l9 5 9-5"/>
+          <path d="M12 22V12"/>
+        </svg>
+        AR로 보기
+      </button>
+
+      <div class="progress-bar" slot="progress-bar">
+        <div class="fill"></div>
+      </div>
+    </model-viewer>
+  </div>
+
+  <div class="hint">
+    드래그(또는 손가락)로 회전 · 두 손가락으로 확대/축소<br />
+    <b>AR로 보기</b>를 누르면 카메라가 켜지고 현실 공간에 모델이 나타납니다.
+  </div>
+
+  <script>
+    const mv = document.getElementById('viewer');
+    const bar = mv.querySelector('.progress-bar');
+    const fill = mv.querySelector('.progress-bar .fill');
+
+    mv.addEventListener('progress', (e) => {
+      const p = e.detail.totalProgress;
+      fill.style.width = (p * 100) + '%';
+      bar.toggleAttribute('hidden', p === 1);
+    });
+
+    // AR 미지원 기기 안내
+    mv.addEventListener('load', () => {
+      if (!mv.canActivateAR) {
+        const btn = mv.querySelector('.ar-button');
+        if (btn) {
+          btn.addEventListener('click', () => {
+            alert('이 기기/브라우저에서는 AR을 지원하지 않습니다.\\n안드로이드는 Chrome, 아이폰은 Safari에서 열어주세요.');
+          });
+        }
+      }
+    });
+  <\/script>
+</body>
+</html>
+`;
+}
+const AR_WEB_README = `AR 웹뷰어 올리는 방법
+
+1. 이 ZIP의 압축을 풉니다. index.html · model.glb · model.usdz 세 파일이 한 폴더에 있어야 해요.
+2. 세 파일을 웹 공간(GitHub Pages 등)의 같은 폴더에 올립니다.
+3. 올린 index.html 의 주소를 QR로 만들어 나눠 주세요.
+   - 안드로이드: Chrome에서 열고 [AR로 보기]
+   - 아이폰·아이패드: Safari에서 열고 [AR로 보기] (model.usdz 사용)
+
+※ 내 컴퓨터에서 index.html 을 두 번 눌러 열면 브라우저 보안 때문에 모델이 안 보일 수 있어요. 웹에 올린 주소로 여세요.
+※ 파일 이름(model.glb, model.usdz)은 바꾸지 마세요.
+`;
+
 async function performV9Export(format) {
   if (!state.root || state.exporting) return;
   if (!state.editableMeshes.length) { showToast('도형을 하나 이상 추가한 뒤 내보내세요.'); return; }
   state.exporting = true;
   let unlock;
   state.exportDone = new Promise(resolve => { unlock = resolve; });
-  showBusy(format === 'glb' ? '3D 작품 파일을 만드는 중…' : 'AR 작품 파일을 만드는 중…');
+  showBusy(format === 'glb' ? '3D 작품 파일을 만드는 중…' : format === 'arweb' ? 'AR 웹뷰어를 만드는 중… (GLB·USDZ 두 가지)' : 'AR 작품 파일을 만드는 중…');
   const root = state.root, selected = state.selectedMesh;
   const scale = root.scale.clone();
   const proxies = [], multi = [], stickerVisibility = [];
@@ -5773,15 +5946,16 @@ async function performV9Export(format) {
     baked = bakePaintedMeshesForExport(2048);
     swapped = swapExportGeometries();
     hidden = hideUserDataForExport();
-    let data;
-    if (format === 'glb') {
-      data = await new Promise((resolve, reject) => {
+    const makeGLB = async () => {
+      const data = await new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('파일 생성 시간이 너무 길어졌습니다. 프로젝트 저장을 이용해 주세요.')), 90000);
         try { new GLTFExporter().parse(root, result => { clearTimeout(timer); resolve(result); }, {binary:true, embedImages:true, maxTextureSize:4096}); }
         catch (e) { clearTimeout(timer); reject(e); }
       });
       if (!(data instanceof ArrayBuffer)) throw new Error('GLB 파일을 생성하지 못했습니다.');
-    } else {
+      return data;
+    };
+    const makeUSDZ = async () => {
       const unsupported = state.editableMeshes.filter(mesh => mesh.geometry.attributes.color && (Array.isArray(mesh.material) || mesh.material.vertexColors));
       if (unsupported.length) throw new Error('일부 부품의 색을 AR 형식으로 보존할 수 없습니다. GLB 또는 프로젝트로 저장해 주세요.');
       // Split material groups on the export scene instead of collapsing to one color.
@@ -5812,9 +5986,24 @@ async function performV9Export(format) {
       exportRoot.updateMatrixWorld(true);
       const bounds = new THREE.Box3().setFromObject(exportRoot).getSize(new THREE.Vector3());
       exportRoot.scale.setScalar(.3 / (Math.max(bounds.x, bounds.y, bounds.z) || 1)); exportRoot.updateMatrixWorld(true);
-      data = await new USDZExporter().parse(exportRoot);
-    }
+      return await new USDZExporter().parse(exportRoot);
+    };
     const base = (state.currentFileName || '나의 작품').replace(/\.(glb|gltf|stl|paint3d)$/i, '').replace(/[<>:"/\\|?*]/g, '_');
+    if (format === 'arweb') {
+      const glb = await makeGLB();
+      const usdz = await makeUSDZ();
+      const title = (state.currentFileName || '나의 작품').replace(/\.(glb|gltf|stl|paint3d)$/i, '');
+      const zip = makeZip([
+        ['index.html', new TextEncoder().encode(arViewerHtml(title))],
+        ['model.glb', new Uint8Array(glb)],
+        ['model.usdz', usdz instanceof Uint8Array ? usdz : new Uint8Array(usdz)],
+        ['올리는 방법.txt', new TextEncoder().encode(AR_WEB_README)],
+      ]);
+      projectDownload(zip, base + '_AR웹뷰어.zip');
+      showToast('AR 웹뷰어 ZIP을 저장했어요. 압축을 풀어 세 파일을 웹에 올리면 AR 주소가 돼요.', 5000);
+      return;
+    }
+    const data = format === 'glb' ? await makeGLB() : await makeUSDZ();
     projectDownload(new Blob([data], {type:format === 'glb' ? 'model/gltf-binary' : 'model/vnd.usdz+zip'}), base + (format === 'glb' ? '_painted.glb' : '_AR.usdz'));
     showToast(format === 'glb' ? 'GLB 작품 파일을 저장했어요.' : 'AR 작품을 저장했어요. 가장 긴 쪽이 약 30cm입니다.', 4000);
   } catch (error) {
