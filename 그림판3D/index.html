@@ -848,6 +848,8 @@
 @media(max-width:570px){.project-gallery{padding:20px;width:calc(100vw - 22px)}.project-gallery-grid{grid-template-columns:1fr}.project-gallery-header h2{font-size:19px}}
 @media(max-width:570px){#btn-save{min-width:70px;white-space:nowrap}.btn.primary .bl{white-space:nowrap}#right{transition:none}}
 #toast{width:max-content;max-width:calc(100% - 40px);line-height:1.6}
+/* V9.1: [처음] 단추가 늘어 좁은 휴대폰에서 [?]가 화면 밖으로 밀리지 않게 */
+@media(max-width:440px){#topbar{gap:3px;padding:0 6px}#topbar .btn{padding:0 5px;min-width:30px}#topbar .icon-btn{min-width:30px}.app-title{font-size:12px;margin-right:0}.tb-sep{display:none}}
 
 </style>
 </head>
@@ -858,7 +860,8 @@
   <!-- 상단 바 -->
   <div id="topbar">
     <div class="app-title"><span class="brand-mark">◈</span> 그림판 3D <span class="ver">V9.0</span></div>
-    <button class="btn" id="btn-open" title="모델 열기 (Ctrl+O)"><span class="bi">📁</span><span class="bl">열기</span></button>
+    <button class="btn" id="btn-home" title="처음 화면 — 새 작품 · 샘플 · 보관함"><span class="bi">🏠</span><span class="bl">처음</span></button>
+    <button class="btn" id="btn-open" title="파일 열기 — GLB · STL · 프로젝트 (Ctrl+O)"><span class="bi">📁</span><span class="bl">열기</span></button>
     <button class="btn" id="btn-project-gallery" title="이 브라우저에 보관한 작품"><span class="bi">▦</span><span class="bl">내 작품</span></button><div class="tb-sep"></div>
     <button class="btn icon-btn" id="btn-undo" disabled title="실행 취소 (Ctrl+Z)">↶</button>
     <button class="btn icon-btn" id="btn-redo" disabled title="다시 실행 (Ctrl+Y)">↷</button>
@@ -4377,8 +4380,9 @@ function bindV8Events() {
 
 // ====================== 이벤트 바인딩 ======================
 function bindEvents() {
-  // 열기: 시작 화면(내 파일 + 샘플)을 보여줌
-  document.getElementById('btn-open').addEventListener('click', showStartScreen);
+  // V9.1: 열기 = 파일 고르기 창(Ctrl+O·시작 화면 [파일 가져오기]와 같음), 처음 = 시작 화면(새 작품·샘플·보관함)
+  document.getElementById('btn-open').addEventListener('click', () => document.getElementById('file-input').click());
+  document.getElementById('btn-home').addEventListener('click', () => showStartScreen());
   document.getElementById('file-input').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (file) loadFile(file);
