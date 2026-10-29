@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>그림판 3D V9.0 — 3D 모델 색칠</title>
+<title>그림판 3D V9.2 — 3D 모델 색칠</title>
 <meta name="description" content="도형을 조합하고 색과 스티커로 꾸미는 오프라인 3D 작업실. 편집 가능한 프로젝트 저장과 작품 보관함, GLB·USDZ·PNG 내보내기를 지원합니다." />
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>" />
 <style>
@@ -464,6 +464,11 @@
     transition: transform 0.08s;
   }
   .swatch:hover { transform: scale(1.12); }
+  .swatch[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #fill-scope { display:grid; grid-template-columns:1fr 1fr; }
+  .fill-label { display:flex; justify-content:space-between; margin:14px 0 6px; font-size:12px; }
+  #opt-fill input[type="range"], #fill-band-axis { width:100%; }
+  #fill-band-axis { padding:9px; border:1px solid var(--panel-border); border-radius:7px; background:#fff; color:var(--text); }
   .swatch:active { transform: scale(0.95); }
   .mini-label { font-size: 11.5px; color: var(--text-dim); margin: 10px 0 6px; }
 
@@ -859,7 +864,7 @@
 
   <!-- 상단 바 -->
   <div id="topbar">
-    <div class="app-title"><span class="brand-mark">◈</span> 그림판 3D <span class="ver">V9.0</span></div>
+    <div class="app-title"><span class="brand-mark">◈</span> 그림판 3D <span class="ver">V9.2</span></div>
     <button class="btn" id="btn-home" title="처음 화면 — 새 작품 · 샘플 · 보관함"><span class="bi">🏠</span><span class="bl">처음</span></button>
     <button class="btn" id="btn-open" title="파일 열기 — GLB · STL · 프로젝트 (Ctrl+O)"><span class="bi">📁</span><span class="bl">열기</span></button>
     <button class="btn" id="btn-project-gallery" title="이 브라우저에 보관한 작품"><span class="bi">▦</span><span class="bl">내 작품</span></button><div class="tb-sep"></div>
@@ -984,8 +989,8 @@
     <div class="card" id="card-color">
       <h3>🎨 색 고르기</h3>
       <div class="cur-color-row">
-        <input type="color" id="color-picker" value="#ff6b6b" title="원하는 색을 직접 고르기">
-        <input type="text" id="color-hex" value="#ff6b6b" maxlength="7">
+        <input type="color" id="color-picker" value="#ff0000" title="원하는 색을 직접 고르기">
+        <input type="text" id="color-hex" value="#ff0000" maxlength="7">
       </div>
       <div class="swatches" id="swatches"></div>
       <div class="mini-label">최근 쓴 색</div>
@@ -1052,10 +1057,24 @@
       <!-- 채우기 -->
       <div class="tool-panel" id="opt-fill">
         <div class="seg" id="fill-scope">
-          <button class="seg-btn active" data-scope="mesh">🧩 부품만</button>
+          <button class="seg-btn active" data-scope="region">연결 영역</button>
+          <button class="seg-btn" data-scope="band">띠 영역</button>
+          <button class="seg-btn" data-scope="mesh">부품</button>
           <button class="seg-btn" data-scope="all">🌈 전체</button>
         </div>
-        <div class="panel-tip" id="fill-tip">모델에서 부품을 클릭하면 그 부품 전체가 지금 색으로 칠해져요.</div>
+        <div id="fill-region-options">
+          <label class="fill-label" for="fill-angle">모서리 허용각 <output id="fill-angle-value">35°</output></label>
+          <input id="fill-angle" type="range" min="1" max="90" value="35">
+          <label class="fill-label" for="fill-tolerance">색상 허용차 <output id="fill-tolerance-value">15%</output></label>
+          <input id="fill-tolerance" type="range" min="0" max="100" value="15">
+        </div>
+        <div id="fill-band-options" hidden>
+          <label class="fill-label" for="fill-band-height">띠 높이 <output id="fill-band-height-value">25%</output></label>
+          <input id="fill-band-height" type="range" min="2" max="100" value="25">
+          <label class="fill-label" for="fill-band-axis">부품 기준 방향</label>
+          <select id="fill-band-axis"><option value="y">세로 (Y) — 서 있는 병</option><option value="x">가로 (X)</option><option value="z">앞뒤 (Z)</option></select>
+        </div>
+        <div class="panel-tip" id="fill-tip">클릭한 곳과 색이 비슷한 연결 면을 채워요. 꺾인 모서리와 색 경계에서 멈춰요. 병 라벨처럼 둘레를 칠하려면 ‘띠 영역’을 선택하세요.</div>
       </div>
 
       <!-- 스티커 -->
@@ -1208,7 +1227,7 @@
 
 // ====================== 앱 정보 / 원본 보관 ======================
 // 버전을 올릴 때는 이 상수 하나만 바꾸면 제목·파일 이름에 모두 반영된다.
-const APP_VERSION = '9.1';
+const APP_VERSION = '9.2';
 const APP_NAME = '그림판 3D V' + APP_VERSION;
 
 // 아직 아무것도 바뀌지 않은 부팅 직후의 문서 전체를 문자열로 보관해 둔다.
@@ -1248,7 +1267,7 @@ const state = {
   selectedEmissiveBackup: null,
 
   mode: 'view',               // view | paintBrush | paintMesh | paintAll | decal
-  currentColor: '#ff6b6b',
+  currentColor: '#ff0000',
 
   // 이미지 스티커(데칼)
   decal: {
@@ -1401,6 +1420,7 @@ function animate() {
   const controlsChanged = state.controls.update();
   flushDirtyColors();
   if (state.needsRender || controlsChanged) {
+    if (state.selectionOutline && state.selectedMesh) state.selectionOutline.update();
     state.renderer.render(state.scene, state.camera);
     state.needsRender = false;
   }
@@ -1528,6 +1548,7 @@ function clearCurrentModel() {
   state.editableMeshes = [];
   state.raycastTargets = [];
   state.triInfo = null;
+  restoreEmissive(state.selectedMesh);
   state.selectedMesh = null;
   state.selectedEmissiveBackup = null;
   state.undoStack = [];
@@ -2708,7 +2729,18 @@ function onPointerDown(event) {
     const hit = raycastAt(event);
     selectMesh(hit ? hit.object : null);
   } else if (state.mode === 'paintAll') {
-    paintAll(state.currentColor);
+    if (_activePointers.size === 1 && raycastAt(event)) paintAll(state.currentColor);
+  } else if (state.mode === 'paintRegion' || state.mode === 'paintBand') {
+    if (_activePointers.size > 1) return;
+    let hit = raycastAt(event);
+    if (hit) {
+      // The fast raycast uses a coarse proxy; region filling needs the actual face index.
+      if (state.mode === 'paintRegion') hit = state.raycaster.intersectObject(hit.object, false)[0];
+      if (!hit) return;
+      selectMesh(hit.object);
+      if (state.mode === 'paintBand') paintBand(hit, state.currentColor);
+      else paintRegion(hit, state.currentColor);
+    }
   } else if (state.mode === 'paintMesh') {
     const hit = raycastAt(event);
     if (hit) {
@@ -3054,27 +3086,23 @@ function selectMesh(mesh) {
 }
 
 function applyEmissive(mesh) {
-  const mat = getPrimaryMaterial(mesh);
-  if (!mat) return;
-  state.selectedEmissiveBackup = {
-    mat,
-    emissive: mat.emissive ? mat.emissive.clone() : null,
-    emissiveIntensity: mat.emissiveIntensity,
-  };
-  if (mat.emissive) {
-    mat.emissive = new THREE.Color(0x0078d4);
-    mat.emissiveIntensity = 0.35;
-    mat.needsUpdate = true;
-  }
+  restoreEmissive();
+  if (!mesh || !state.scene) return;
+  // Selection belongs to the editor, never to the painted material or exported root.
+  const outline = new THREE.BoxHelper(mesh, 0x4c6ef5);
+  outline.material.toneMapped = false;
+  outline.material.depthTest = false;
+  outline.renderOrder = 100;
+  state.scene.add(outline);
+  state.selectionOutline = outline;
 }
 
 function restoreEmissive(mesh) {
-  if (!state.selectedEmissiveBackup) return;
-  const { mat, emissive, emissiveIntensity } = state.selectedEmissiveBackup;
-  if (mat && mat.emissive && emissive) {
-    mat.emissive.copy(emissive);
-    mat.emissiveIntensity = emissiveIntensity;
-    mat.needsUpdate = true;
+  if (state.selectionOutline) {
+    state.selectionOutline.removeFromParent ? state.selectionOutline.removeFromParent() : state.scene.remove(state.selectionOutline);
+    state.selectionOutline.geometry.dispose();
+    state.selectionOutline.material.dispose();
+    state.selectionOutline = null;
   }
   state.selectedEmissiveBackup = null;
 }
@@ -3085,6 +3113,126 @@ function getPrimaryMaterial(mesh) {
 }
 
 // ====================== 채우기 ======================
+function fillMode() {
+  return {region: 'paintRegion', band: 'paintBand', mesh: 'paintMesh', all: 'paintAll'}[state.fillScope];
+}
+
+function updateFillOptions() {
+  document.getElementById('fill-region-options').hidden = state.fillScope !== 'region';
+  document.getElementById('fill-band-options').hidden = state.fillScope !== 'band';
+  document.getElementById('fill-tip').textContent = {
+    region: '클릭한 곳과 색이 비슷한 연결 면을 채워요. 꺾인 모서리와 색 경계에서 멈춰요. 범위가 크면 실행 취소 후 허용값을 낮춰 주세요.',
+    band: '병 라벨의 가운데를 클릭하세요. 선택한 부품의 둘레를 뒷면까지 한 번에 칠해요. 띠 높이는 부품 길이에 대한 비율이며, 축은 부품 기준이에요. 붙인 스티커는 유지돼요.',
+    mesh: '클릭한 부품 전체를 지금 색으로 칠해요.',
+    all: '모델을 클릭하면 모든 부품을 지금 색으로 칠해요.'
+  }[state.fillScope];
+}
+
+// Build connectivity from positions, so UV seams and duplicated STL vertices join.
+// At adaptive-subdivision T junctions, collinear edges sharing an endpoint also join.
+function connectedFillVertices(mesh, seedFace) {
+  const g = mesh.geometry, pos = g.attributes.position, colors = g.attributes.color;
+  const count = Math.floor((g.index ? g.index.count : pos.count) / 3);
+  if (!Number.isInteger(seedFace) || seedFace < 0 || seedFace >= count) return [];
+  if (!g.boundingBox) g.computeBoundingBox();
+  const eps = Math.max(g.boundingBox.getSize(new THREE.Vector3()).length() * 1e-7, 1e-12);
+  const ids = new Uint32Array(count * 3), indices = new Uint32Array(count * 3);
+  const points = [], incident = [], weld = new Map();
+  const normals = new Float32Array(count * 3), shades = new Float32Array(count * 3);
+  const materials = new Int32Array(count);
+  for (const group of g.groups) {
+    for (let f = Math.floor(group.start / 3); f < Math.min(count, (group.start + group.count) / 3); f++) materials[f] = group.materialIndex;
+  }
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  const color = new THREE.Color();
+  for (let f = 0; f < count; f++) {
+    color.setRGB(0, 0, 0);
+    for (let k = 0; k < 3; k++) {
+      const offset = f * 3 + k, i = g.index ? g.index.getX(offset) : offset;
+      indices[offset] = i;
+      a.fromBufferAttribute(pos, i);
+      const key = [a.x, a.y, a.z].map(v => Math.round(v / eps)).join(',');
+      let id = weld.get(key);
+      if (id === undefined) { id = points.length; weld.set(key, id); points.push(a.clone()); incident.push([]); }
+      ids[offset] = id;
+      incident[id].push(f);
+      color.r += colors.getX(i) / 3; color.g += colors.getY(i) / 3; color.b += colors.getZ(i) / 3;
+    }
+    a.copy(points[ids[f * 3]]); b.copy(points[ids[f * 3 + 1]]).sub(a); c.copy(points[ids[f * 3 + 2]]).sub(a);
+    a.crossVectors(b, c).normalize().toArray(normals, f * 3);
+    color.convertLinearToSRGB().toArray(shades, f * 3);
+  }
+  const minDot = Math.cos(state.fillAngle * Math.PI / 180);
+  const tolerance = state.fillTolerance / 100;
+  const visited = new Uint8Array(count), stack = [seedFace], selected = new Set();
+  visited[seedFace] = 1;
+  function sharedEdge(f, n, at) {
+    // Positive collinear rays from a common endpoint overlap in an edge, not just a corner.
+    for (let i = 0; i < 3; i++) {
+      const u = ids[f * 3 + i]; if (u === at) continue;
+      a.copy(points[u]).sub(points[at]);
+      for (let j = 0; j < 3; j++) {
+        const v = ids[n * 3 + j]; if (v === at) continue;
+        b.copy(points[v]).sub(points[at]);
+        if (a.dot(b) > 0 && c.crossVectors(a, b).lengthSq() <= eps * eps * Math.min(a.lengthSq(), b.lengthSq())) return true;
+      }
+    }
+    return false;
+  }
+  while (stack.length) {
+    const f = stack.pop();
+    for (let k = 0; k < 3; k++) {
+      selected.add(indices[f * 3 + k]);
+      const id = ids[f * 3 + k];
+      for (const n of incident[id]) {
+        if (visited[n] || materials[n] !== materials[seedFace]) continue;
+        const dot = normals[f * 3] * normals[n * 3] + normals[f * 3 + 1] * normals[n * 3 + 1] + normals[f * 3 + 2] * normals[n * 3 + 2];
+        if (dot < minDot - 1e-6) continue;
+        if ([0, 1, 2].some(ch => Math.abs(shades[n * 3 + ch] - shades[seedFace * 3 + ch]) > tolerance + 1e-6)) continue;
+        if (!sharedEdge(f, n, id)) continue;
+        visited[n] = 1; stack.push(n);
+      }
+    }
+  }
+  return selected;
+}
+
+function finishAreaFill(mesh, hex) {
+  fullColorUpdate(mesh);
+  endStroke();
+  addRecentColor(hex);
+  state.needsRender = true;
+  updateSelectionInfo();
+  updateMeshList();
+}
+
+function paintRegion(hit, hex) {
+  const mesh = hit.object;
+  beginStroke(); recordBefore(mesh); ensurePaintReady(mesh);
+  const vertices = connectedFillVertices(mesh, hit.faceIndex);
+  const c = paintColorLinear(hex), attr = mesh.geometry.attributes.color;
+  for (const i of vertices) attr.setXYZ(i, c.r, c.g, c.b);
+  finishAreaFill(mesh, hex);
+  showToast('연결된 영역을 채웠어요. Ctrl+Z로 취소할 수 있어요.');
+}
+
+function paintBand(hit, hex) {
+  const mesh = hit.object, g = mesh.geometry;
+  mesh.updateWorldMatrix(true, false);
+  const local = mesh.worldToLocal(hit.point.clone());
+  if (!g.boundingBox) g.computeBoundingBox();
+  const axis = state.fillBandAxis, component = {x: 0, y: 1, z: 2}[axis];
+  const half = (g.boundingBox.max[axis] - g.boundingBox.min[axis]) * state.fillBandHeight / 200;
+  beginStroke(); recordBefore(mesh); ensurePaintReady(mesh);
+  const pos = g.attributes.position, attr = g.attributes.color, c = paintColorLinear(hex);
+  for (let i = 0; i < pos.count; i++) {
+    const value = component === 0 ? pos.getX(i) : component === 1 ? pos.getY(i) : pos.getZ(i);
+    if (Math.abs(value - local[axis]) <= half + 1e-9) attr.setXYZ(i, c.r, c.g, c.b);
+  }
+  finishAreaFill(mesh, hex);
+  showToast('부품 둘레를 띠 모양으로 채웠어요. Ctrl+Z로 취소할 수 있어요.');
+}
+
 function fillMeshColor(mesh, hex) {
   const linear = paintColorLinear(hex);
   if (mesh.userData.paintReady) {
@@ -3452,7 +3600,9 @@ function bakeVertexColorsToTexture(mesh, size = 2048) {
   for (let i = 3; i < out.length; i += 4) out[i] = 255;
   ctx.putImageData(imgData, 0, 0);
 
-  return new THREE.CanvasTexture(canvas);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.encoding = THREE.sRGBEncoding;
+  return texture;
 }
 
 // 색칠된(paintReady) 메시를 내보내기용 상태로 임시 변환: vertex color 제거 + 베이크 텍스처 적용
@@ -3531,12 +3681,21 @@ function swapExportGeometries() {
     if (!p || !p.geometry) return;
     // vertex color를 직접 내보내야 하는 메시(UV 없음·베이크 실패)는 세분화본 유지
     if (m.geometry.attributes && m.geometry.attributes.color) return;
-    swaps.push({ m, g: m.geometry });
-    m.geometry = p.geometry;
+    // GLTFExporter writes COLOR_0 whenever the geometry has it, even when the
+    // material disables vertex colors. The low-resolution proxy may still hold
+    // imported colors, which would multiply the newly baked texture a second time.
+    let geometry = p.geometry;
+    const temporary = !!geometry.attributes.color;
+    if (temporary) {
+      geometry = geometry.clone();
+      geometry.deleteAttribute('color');
+    }
+    swaps.push({ m, g: m.geometry, temporary: temporary ? geometry : null });
+    m.geometry = geometry;
   });
   return {
     count: swaps.length,
-    restore() { swaps.forEach(s => { s.m.geometry = s.g; }); },
+    restore() { swaps.forEach(s => { s.m.geometry = s.g; if (s.temporary) s.temporary.dispose(); }); },
   };
 }
 
@@ -3758,7 +3917,7 @@ function setMode(mode) {
 // 터치(태블릿)에서는 한 손가락 = 색칠, 두 손가락 = 확대/이동.
 function applyControlScheme() {
   const c = state.controls;
-  if (state.mode === 'paintBrush' || state.mode === 'decal') {
+  if (state.mode === 'paintBrush' || state.mode === 'decal' || state.mode.startsWith('paint')) {
     c.mouseButtons = { LEFT: -1, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE };
     c.touches = { ONE: -1, TWO: THREE.TOUCH.DOLLY_PAN };
   } else {
@@ -3777,7 +3936,7 @@ function updateHint() {
   } else if (t === 'picker') {
     el.textContent = '모델이나 스티커를 클릭하면 그 색을 가져와요';
   } else if (t === 'fill') {
-    el.textContent = '칠하고 싶은 곳을 클릭!';
+    el.textContent = '칠하고 싶은 곳을 클릭! · 우클릭 드래그: 화면 돌리기 · Ctrl+Z: 실행 취소';
   } else if (t === 'sticker') {
     el.textContent = '클릭·드래그로 위치 잡기 → Q/E 회전 → ‘모델에 새기기’ 버튼!';
   } else {
@@ -3799,6 +3958,7 @@ function setCurrentColor(hex) {
   state.currentColor = hex;
   document.getElementById('color-picker').value = hex;
   document.getElementById('color-hex').value = hex;
+  document.querySelectorAll('#swatches .swatch').forEach(s => s.setAttribute('aria-pressed', String(s.dataset.color === hex.toLowerCase())));
 }
 
 function updateOverlay() {
@@ -3986,7 +4146,11 @@ function renderRecentColors() {
 // ====================== V8: 도구·시작 화면·샘플·USDZ ======================
 // V8 추가 상태
 state.tool = 'view';                 // view | brush | fill | sticker | eraser | picker
-state.fillScope = 'mesh';            // mesh(부품만) | all(전체)
+state.fillScope = 'region';          // region | band | mesh | all
+state.fillAngle = 35;
+state.fillTolerance = 15;
+state.fillBandHeight = 25;
+state.fillBandAxis = 'y';
 state.brush.paintType = 'marker';    // 붓 도구가 기억하는 마지막 붓 종류
 state.stickers = [];                 // 새겨진 텍스처 스티커 목록
 state.stickerRoot = null;            // 스티커 메시들이 담기는 그룹 (root의 자식)
@@ -4255,7 +4419,7 @@ function setTool(tool) {
   if (tool === 'brush') { state.brush.type = state.brush.paintType; setMode('paintBrush'); }
   else if (tool === 'eraser') { state.brush.type = 'eraser'; setMode('paintBrush'); }
   else if (tool === 'picker') { state.brush.type = 'picker'; setMode('paintBrush'); }
-  else if (tool === 'fill') { setMode(state.fillScope === 'all' ? 'paintAll' : 'paintMesh'); }
+  else if (tool === 'fill') { setMode(fillMode()); }
   else if (tool === 'sticker') { setMode('decal'); }
   else { setMode('view'); }
 
@@ -4304,12 +4468,18 @@ function bindV8Events() {
     b.addEventListener('click', () => {
       state.fillScope = b.dataset.scope;
       document.querySelectorAll('#fill-scope .seg-btn').forEach(x => x.classList.toggle('active', x === b));
-      document.getElementById('fill-tip').textContent = (state.fillScope === 'all')
-        ? '모델을 클릭하면 전체가 지금 색으로 한 번에 칠해져요.'
-        : '모델에서 부품을 클릭하면 그 부품 전체가 지금 색으로 칠해져요.';
-      if (state.tool === 'fill') setMode(state.fillScope === 'all' ? 'paintAll' : 'paintMesh');
+      updateFillOptions();
+      if (state.tool === 'fill') setMode(fillMode());
     });
   });
+
+  [['fill-angle', 'fillAngle', '°'], ['fill-tolerance', 'fillTolerance', '%'], ['fill-band-height', 'fillBandHeight', '%']].forEach(([id, key, unit]) => {
+    document.getElementById(id).addEventListener('input', e => {
+      state[key] = Number(e.target.value);
+      document.getElementById(id + '-value').textContent = e.target.value + unit;
+    });
+  });
+  document.getElementById('fill-band-axis').addEventListener('change', e => { state.fillBandAxis = e.target.value; });
 
   // 시작 화면
   document.getElementById('start-open').addEventListener('click', () => {
@@ -4486,15 +4656,21 @@ function bindEvents() {
 
   // 색상 팔레트
   const swatches = [
-    '#ff6b6b','#ffa94d','#ffd43b','#a9e34b','#51cf66','#20c997','#22b8cf','#4dabf7',
-    '#748ffc','#9775fa','#da77f2','#f783ac','#ffffff','#cccccc','#666666','#000000',
+    ['#ff0000','빨강'],['#ff8000','주황'],['#ffff00','노랑'],['#00ff00','연두'],
+    ['#008000','초록'],['#00ffff','하늘'],['#0000ff','파랑'],['#000080','남색'],
+    ['#800080','보라'],['#ff00ff','자홍'],['#ffc0cb','분홍'],['#8b4513','갈색'],
+    ['#ffffff','흰색'],['#c0c0c0','밝은 회색'],['#808080','회색'],['#000000','검정'],
   ];
   const swatchEl = document.getElementById('swatches');
-  swatches.forEach(hex => {
-    const s = document.createElement('div');
+  swatches.forEach(([hex, name]) => {
+    const s = document.createElement('button');
+    s.type = 'button';
     s.className = 'swatch';
     s.style.background = hex;
-    s.title = hex;
+    s.title = name + ' ' + hex;
+    s.dataset.color = hex;
+    s.setAttribute('aria-label', name + ' ' + hex);
+    s.setAttribute('aria-pressed', String(state.currentColor === hex));
     s.addEventListener('click', () => setCurrentColor(hex));
     swatchEl.appendChild(s);
   });
@@ -6039,7 +6215,7 @@ initStudio();
 initV9Interface();
 initProjectStorage();
 updateStickerUI();
-setCurrentColor('#5b63e8');
+setCurrentColor('#ff0000');
 setTool('view');
 updateStorageInfo();
 renderRecentColors();
